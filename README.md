@@ -1,7 +1,4 @@
-# jabba
+# 🛸 JABBA  
+**Just Another Backend-Based Application**
 
-- init_request
-- external_deps
-- runtime_features
-- apply_formulas
-- custom_logic
+> A sleek wrapper around FastAPI — helping you build backends faster, cleaner, and with fewer decisions to make.
