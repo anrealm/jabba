@@ -76,7 +76,7 @@ async def test_model_apply_loads_on_setup_and_applies():
         def apply(self, model, features):
             return sum(model[k] * v for k, v in features.items())
 
-    apply_node = WeightedSum(name="score", features="feats")
+    apply_node = WeightedSum(name="score", features_from="feats")
 
     @node(name="feats")
     async def feats() -> dict:
@@ -86,3 +86,50 @@ async def test_model_apply_loads_on_setup_and_applies():
     graph = GraphSpec("g", output="score").add(feats, apply_node).compile()
     result = await graph.run(None)
     assert result.output == 23.0
+
+
+class FakeModel:
+    """Duck-typed SupportsPredict: what a consumer would inject."""
+
+    def __init__(self, factor: float):
+        self.factor = factor
+
+    def predict(self, features):
+        return {k: v * self.factor for k, v in features.items()}
+
+
+async def test_model_apply_with_injected_sync_loader():
+    apply_node = ModelApply(
+        name="score", features_from="feats", loader=lambda resources: FakeModel(resources["factor"])
+    )
+
+    @node(name="feats")
+    async def feats() -> dict:
+        return {"a": 2.0}
+
+    await apply_node.setup({"factor": 10.0})
+    graph = GraphSpec("g", output="score").add(feats, apply_node).compile()
+    result = await graph.run(None)
+    assert result.output == {"a": 20.0}
+
+
+async def test_model_apply_with_injected_async_loader():
+    async def loader(resources):
+        return FakeModel(resources["factor"])
+
+    apply_node = ModelApply(name="score", features_from="feats", loader=loader)
+
+    @node(name="feats")
+    async def feats() -> dict:
+        return {"a": 3.0}
+
+    await apply_node.setup({"factor": 2.0})
+    graph = GraphSpec("g", output="score").add(feats, apply_node).compile()
+    result = await graph.run(None)
+    assert result.output == {"a": 6.0}
+
+
+async def test_model_apply_without_loader_or_override_fails_clearly():
+    apply_node = ModelApply(name="score", features_from="feats")
+    with pytest.raises(NotImplementedError, match="loader"):
+        await apply_node.setup({})

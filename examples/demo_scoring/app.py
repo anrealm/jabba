@@ -58,7 +58,7 @@ class LinearModel(ModelApply):
         return sum(model.get(name, 0.0) * value for name, value in features.items())
 
 
-score = LinearModel(name="score", features="features")
+score = LinearModel(name="score", features_from="features")
 
 
 @node()

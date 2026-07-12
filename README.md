@@ -71,7 +71,16 @@ Plus prometheus metrics at `/metrics`: per-node and per-graph duration histogram
 Reusable bricks with configurable input wiring:
 
 - `PydanticParse` — validate the incoming request into a pydantic model.
-- `ModelApply` — contract node: `load()` a model at startup, `apply()` it per request. The integration point for external model libraries.
+- `ModelApply` — contract node: load a model once at startup, apply it per request. Jabba knows no model library — the consumer injects a provider. The model interface is `SupportsPredict` (anything with `predict(features)`):
+
+  ```python
+  score = ModelApply(
+      name="score", features_from="user_features",   # the node whose result feeds the model
+      loader=lambda resources: my_model_registry.load_model("demo", version=3),
+  )
+  ```
+
+  The loader may be sync or async; for custom logic subclass and override `load()` / `apply()`.
 
 ## Demo
 

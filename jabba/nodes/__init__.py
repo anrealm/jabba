@@ -1,4 +1,4 @@
-from .model import ModelApply
+from .model import ModelApply, SupportsPredict
 from .parse import PydanticParse
 
-__all__ = ["ModelApply", "PydanticParse"]
+__all__ = ["ModelApply", "PydanticParse", "SupportsPredict"]
