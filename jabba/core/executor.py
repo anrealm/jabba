@@ -3,6 +3,8 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from loguru import logger
+
 from .context import Ctx, GraphResult, NodeStat, RequestStat
 from .errors import GraphTimeoutError, NodeFailedError
 from .node import Node
@@ -46,15 +48,11 @@ async def run_graph(
         for name in pending_deps:
             stat.nodes[name] = NodeStat(status="skipped")
 
-    async def cancel_running() -> None:
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-
+    failure: tuple[str, BaseException] | None = None
     try:
         async with asyncio.timeout(timeout):
             start_ready()
-            while tasks:
+            while tasks and failure is None:
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 for task in done:
                     name = tasks.pop(task)
@@ -65,20 +63,54 @@ async def run_graph(
                     elif node.optional:
                         results[name] = node.default
                     else:
-                        await cancel_running()
-                        finish("failed")
-                        raise NodeFailedError(name, stat) from error
+                        failure = (name, error)
+                        break
                     for child in graph.children[name]:
                         pending_deps[child] -= 1
-                start_ready()
+                if failure is None:
+                    start_ready()
     except TimeoutError:
-        for name in tasks.values():
-            stat.nodes.setdefault(name, NodeStat(status="timeout"))
+        # Only what was still running at the deadline: a node that finished in the
+        # same tick keeps its own status.
+        running = [name for task, name in tasks.items() if not task.done()]
+        await _cancel(tasks)
+        for name in running:
+            node_stat = stat.nodes.setdefault(name, NodeStat(status="timeout"))
+            node_stat.status = "timeout"
+            node_stat.error = f"graph deadline after {timeout}s"
         finish("timeout")
         raise GraphTimeoutError(graph.name, stat) from None
+    except BaseException:
+        await _cancel(tasks)  # cancelled from outside (client gone): nodes must not outlive it
+        raise
+
+    if failure is not None:
+        # Outside the deadline block: a slow cancel cannot turn a failure into a timeout.
+        await _cancel(tasks)
+        finish("failed")
+        raise NodeFailedError(failure[0], stat) from failure[1]
 
     finish("ok")
     return GraphResult(outputs=results, stat=stat, output_name=graph.output)
+
+
+#: How long a deadline/failure waits for cancelled nodes before raising anyway.
+#: A node that ignores cancellation (or cleans up slowly) must not hold the error.
+CANCEL_GRACE_S = 0.05
+
+
+async def _cancel(tasks: dict[asyncio.Task[Any], str]) -> None:
+    for task in tasks:
+        task.cancel()
+    if not tasks:
+        return
+    _, stuck = await asyncio.wait(tasks, timeout=CANCEL_GRACE_S)
+    if stuck:
+        logger.warning(
+            "nodes {} did not stop within {}s of cancellation; left to finish in background",
+            sorted(tasks[t] for t in stuck),
+            CANCEL_GRACE_S,
+        )
 
 
 async def _run_node(node: Node, results: dict[str, Any], request: Any, ctx: Ctx) -> Any:
