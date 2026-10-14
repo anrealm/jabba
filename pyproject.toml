@@ -3,6 +3,7 @@ name = "jabba"
 version = "2.0.0a0"
 description = "Graph-based async backend framework: compiled DAGs of computable nodes on top of FastAPI"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
