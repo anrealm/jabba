@@ -84,7 +84,7 @@ jobs:
       - name: License copy matches the root LICENSE
         working-directory: .
         run: cmp LICENSE cpp/LICENSE
-      - name: Configure (Debug, -O0: no reliance on optimizer tail calls)
+      - name: "Configure (Debug, -O0: no reliance on optimizer tail calls)"
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_BUILD_TYPE=Debug
       - name: Build
         run: cmake --build build -j 4
