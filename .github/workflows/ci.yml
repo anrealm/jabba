@@ -73,7 +73,7 @@ jobs:
         include:
           - { os: ubuntu-latest, cxx: g++-13 }
           - { os: ubuntu-latest, cxx: g++-14 }
-          - { os: ubuntu-latest, cxx: clang++-16, apt: clang-16 }
+          - { os: ubuntu-24.04, cxx: clang++-16, apt: clang-16 }  # the oldest supported clang is not in newer images
           - { os: ubuntu-latest, cxx: clang++-18, apt: clang-18 }
           - { os: macos-latest, cxx: clang++ }
     defaults:
