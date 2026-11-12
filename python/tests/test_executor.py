@@ -386,3 +386,30 @@ async def test_a_timeout_raised_by_the_node_itself_is_a_failure():
         await graph.run(None)
     node_stat = info.value.stat.nodes["client_call"]
     assert (node_stat.status, node_stat.error_kind) == ("failed", "failed")
+
+
+async def test_late_ctx_writes_do_not_reach_a_returned_record():
+    @node(optional=True, default=0, timeout=0.03)
+    async def late(ctx) -> int:
+        try:
+            await asyncio.sleep(0.3)
+        except asyncio.CancelledError:
+            await asyncio.sleep(0.1)
+        ctx.stat.set("late", True)
+        return 1
+
+    graph = GraphSpec("g").add(late).compile()
+    result = await graph.run(None)
+    await asyncio.sleep(0.3)
+    assert "late" not in result.stat.fields
+    assert "late" not in result.stat.to_record()["fields"]
+
+
+def test_record_fields_are_a_copy():
+    from jabba.core.context import RequestStat
+
+    stat = RequestStat(request_id="r", graph="g")
+    stat.set("a", 1)
+    record = stat.to_record()
+    record["fields"]["b"] = 2
+    assert stat.fields == {"a": 1}
