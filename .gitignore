@@ -162,3 +162,7 @@ cython_debug/
 # Rust build output (rust/ implementation)
 target/
 rust/Cargo.lock
+
+# Core dumps from crashed test binaries
+core
+core.[0-9]*

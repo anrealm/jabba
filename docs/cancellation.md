@@ -45,7 +45,15 @@ jabba cancels a node by **dropping its future**. Destructors run right away, so 
 
 ## C++
 
-Added together with the C++ implementation.
+jabba cancels a node by **requesting stop on its token** — `ctx.stop_token()`, or `co_await ctx.stopped()`. It never destroys a node's coroutine: whatever the node awaits may still resume it, and it must find it alive. So:
+
+1. **A node that does not look at its token runs to its end** in the background. Its result is discarded and its `ctx` writes after the run has returned are dropped, but it keeps whatever it holds until it finishes. Check the token in loops and pass it to cancellable operations.
+
+2. **A node that never finishes** (awaits something that never resumes) leaks its frame and keeps the run's state alive.
+
+3. **Blocking calls** inside a node hold an executor thread, and sync nodes run inline on one: the run's other nodes queue behind them on a single-threaded executor such as `run_sync`'s.
+
+4. **Stop callbacks — and code resumed by `co_await ctx.stopped()` — run on the thread that requests stop**: an executor thread for timeouts, deadlines and failures. jabba delivers the run's result before requesting stop, but with a single-threaded executor (`run_blocking`) a slow cleanup still delays the return. Keep them short; post real work elsewhere.
 
 ## Recommendations
 
