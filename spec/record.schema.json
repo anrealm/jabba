@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "jabba RequestRecord",
+  "description": "One record per graph run that ended ok, failed or timeout. Additive fields do not bump record_version.",
+  "type": "object",
+  "required": ["record_version", "request_id", "graph", "status", "duration_ms", "nodes", "fields"],
+  "properties": {
+    "record_version": {"const": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "graph": {"type": "string"},
+    "status": {"enum": ["ok", "failed", "timeout"]},
+    "duration_ms": {"type": "number", "minimum": 0},
+    "nodes": {"type": "object", "additionalProperties": {"$ref": "#/$defs/node"}},
+    "fields": {"type": "object"}
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["status", "error_kind", "error", "started_at", "duration_ms"],
+      "properties": {
+        "status": {"enum": ["ok", "failed", "timeout", "skipped"]},
+        "error_kind": {"enum": [null, "failed", "timeout", "deadline", "cancelled"]},
+        "error": {"type": ["string", "null"]},
+        "started_at": {"type": ["number", "null"], "description": "Unix epoch seconds; null if the node never started"},
+        "duration_ms": {"type": ["number", "null"], "minimum": 0, "description": "From start until the outcome was recorded; null if never started"}
+      }
+    }
+  }
+}

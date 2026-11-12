@@ -285,3 +285,49 @@ async def test_node_failure_stays_a_failure_when_cancel_is_slow():
     with pytest.raises(NodeFailedError) as info:
         await graph.run(None, timeout=0.1)
     assert info.value.stat.status == "failed"
+
+
+async def test_record_error_kind_failed_and_timeout():
+    @node(optional=True, default=0)
+    async def broken() -> int:
+        raise ValueError("x")
+
+    @node(optional=True, default=0, timeout=0.02)
+    async def slow() -> int:
+        await asyncio.sleep(1)
+        return 1
+
+    graph = GraphSpec("g").add(broken, slow).compile()
+    result = await graph.run(None)
+    nodes = result.stat.to_record()["nodes"]
+    assert nodes["broken"]["error_kind"] == "failed"
+    assert nodes["slow"]["error_kind"] == "timeout"
+
+
+async def test_record_error_kind_deadline_cancelled_and_none():
+    @node()
+    async def bad() -> int:
+        await asyncio.sleep(0.01)
+        raise RuntimeError("boom")
+
+    @node()
+    async def sibling() -> int:
+        await asyncio.sleep(1)
+        return 1
+
+    @node()
+    async def child(bad: int) -> int:
+        return bad
+
+    graph = GraphSpec("g").add(bad, sibling, child).compile()
+    with pytest.raises(NodeFailedError) as failed:
+        await graph.run(None)
+    nodes = failed.value.stat.to_record()["nodes"]
+    assert nodes["bad"]["error_kind"] == "failed"
+    assert nodes["sibling"]["error_kind"] == "cancelled"
+    assert nodes["child"]["error_kind"] is None  # never started
+
+    deadline_graph = GraphSpec("d").add(sibling).compile()
+    with pytest.raises(GraphTimeoutError) as timed_out:
+        await deadline_graph.run(None, timeout=0.05)
+    assert timed_out.value.stat.to_record()["nodes"]["sibling"]["error_kind"] == "deadline"

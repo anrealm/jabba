@@ -7,6 +7,7 @@ RECORD_VERSION = 1
 
 NodeStatus = Literal["ok", "failed", "timeout", "skipped"]
 GraphStatus = Literal["ok", "failed", "timeout"]
+ErrorKind = Literal["failed", "timeout", "deadline", "cancelled"]
 
 
 @dataclass
@@ -15,6 +16,8 @@ class NodeStat:
     started_at: float | None = None
     duration_ms: float | None = None
     error: str | None = None
+    #: Normative category of the error; ``error`` is human-readable text only.
+    error_kind: ErrorKind | None = None
 
 
 @dataclass
@@ -43,6 +46,7 @@ class RequestStat:
             "nodes": {
                 name: {
                     "status": ns.status,
+                    "error_kind": ns.error_kind,
                     "started_at": ns.started_at,
                     "duration_ms": ns.duration_ms,
                     "error": ns.error,
