@@ -8,12 +8,18 @@ on:
 jobs:
   python:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+      - name: License copies match the root LICENSE
+        working-directory: .
+        run: cmp LICENSE python/LICENSE
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
