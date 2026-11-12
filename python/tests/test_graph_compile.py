@@ -129,3 +129,15 @@ def test_compile_error_kind(build, kind):
     with pytest.raises(GraphCompileError) as info:
         build()
     assert info.value.kind == kind
+
+
+def test_optional_output_without_default_fails():
+    a = make("a", optional=True)
+    with pytest.raises(GraphCompileError, match="optional output node 'a'") as info:
+        GraphSpec("g", output="a").add(a).compile()
+    assert info.value.kind == "optional_output_without_default"
+
+
+def test_optional_output_with_default_compiles():
+    a = make("a", optional=True, default=None)
+    GraphSpec("g", output="a").add(a).compile()

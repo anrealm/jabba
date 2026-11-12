@@ -63,6 +63,13 @@ class GraphSpec:
                         f"dependents but declares no default",
                         kind="optional_without_default",
                     )
+        if self.output is not None:
+            out = nodes[self.output]
+            if out.optional and not out.has_default:
+                raise GraphCompileError(
+                    f"graph '{self.name}': optional output node '{out.name}' declares no default",
+                    kind="optional_output_without_default",
+                )
 
     def _check_annotations(self, nodes: dict[str, Node]) -> None:
         for n in nodes.values():

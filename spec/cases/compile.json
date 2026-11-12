@@ -20,7 +20,6 @@
                 "nodes": {"a": {"status": "failed", "error_kind": "failed"}, "b": {"status": "ok"}}}},
     {"name": "optional_output_without_default",
      "graph": {"output": "a", "nodes": [{"name": "a", "optional": true}]},
-     "pending": {"python": "optional output without default compiles today (fixed by the optional-output PR)"},
      "expect": {"status": "compile_error", "compile_error": "optional_output_without_default"}},
     {"name": "cycle",
      "graph": {"nodes": [{"name": "a", "deps": ["b"]}, {"name": "b", "deps": ["a"]}]},
