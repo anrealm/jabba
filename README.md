@@ -9,8 +9,9 @@ Jabba is being built as a polyglot library: one execution semantics, native impl
 | Directory | What |
 |---|---|
 | [`python/`](python/README.md) | Python implementation (reference) + FastAPI service layer |
+| [`rust/`](rust/README.md) | Rust implementation: `std` only, executor-agnostic |
 | [`spec/`](spec/) | Language-neutral semantics, record schema, conformance cases |
 
-Rust and C++ implementations are planned; they will pass the same conformance cases.
+A C++ implementation is planned; it will pass the same conformance cases.
 
 License: MIT.

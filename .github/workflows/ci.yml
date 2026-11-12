@@ -36,3 +36,31 @@ jobs:
             python -m pytest -q
             echo "::endgroup::"
           done
+
+  rust:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        toolchain: ["1.75", stable]
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          rustup toolchain install ${{ matrix.toolchain }} --profile minimal --component clippy,rustfmt
+          rustup default ${{ matrix.toolchain }}
+      - name: No runtime dependencies
+        run: |
+          cargo tree -e normal --prefix none
+          test "$(cargo tree -e normal --prefix none | wc -l)" -eq 1
+      - name: Format and lint
+        if: matrix.toolchain == 'stable'
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+      - name: Test (5 consecutive runs to catch timing flakes)
+        run: for i in 1 2 3 4 5; do cargo test --quiet; done
