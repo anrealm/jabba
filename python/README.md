@@ -53,6 +53,8 @@ async def handle(payload: dict):
 - **Timeouts** — per-node `timeout` plus a whole-graph deadline.
 - **Ordering-only edges** — `after=["warmup"]` for dependencies that carry no data.
 
+What a timeout or cancellation can and cannot stop: [docs/cancellation.md](../docs/cancellation.md).
+
 ## Node lifecycle
 
 Nodes that need resources (connection pools, models, warm caches) override `setup(resources)` / `shutdown()` — called once at app startup/shutdown, deduplicated across graphs. Per-request initialization is just a regular node.

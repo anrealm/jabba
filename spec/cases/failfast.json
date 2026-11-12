@@ -16,7 +16,6 @@
                           "slow": {"status": "skipped", "error_kind": "cancelled"}}}},
     {"name": "fail_fast_records_a_cancel_ignoring_node_as_cancelled",
      "requires": ["ignore_cancel"],
-     "pending": {"python": "such a node stays 'ok' in the record today (fixed by the executor PR)"},
      "graph": {"nodes": [
        {"name": "bad", "behavior": {"sleep_ms": 20, "fail": "boom"}},
        {"name": "stubborn", "behavior": {"sleep_ms": 1000, "ignore_cancel": true}}]},
