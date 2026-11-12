@@ -31,9 +31,21 @@ Cancellation is **cooperative**: jabba asks, and your code decides when it actua
 
 5. **Blocking code without `await`.** `time.sleep`, a long CPU loop, a synchronous HTTP call: there is nowhere to deliver the cancellation, and the whole event loop — every other node and jabba's own timers — stands still until the call returns. jabba cannot do anything about this. Move such work to a thread (case 3) or make it async.
 
-## Rust, C++
+## Rust
 
-Added together with the Rust and C++ implementations.
+jabba cancels a node by **dropping its future**. Destructors run right away, so an async node cannot keep running on its own: whatever it was awaiting is gone. What can still keep going:
+
+1. **Work handed to other threads or tasks.** `std::thread::spawn`, `tokio::task::spawn_blocking`, `tokio::spawn` — dropping the node's future does not stop them. Watch `ctx.cancel_token()` there (`is_cancelled()`, or `cancelled().await`): jabba cancels it when it stops waiting for the node. Writes such work makes to `ctx` after the run has returned are dropped.
+
+2. **Blocking code inside an async node.** `std::thread::sleep`, a long CPU loop, blocking I/O: a run is one future, so a node that blocks holds every other node of the run and the deadline check until it returns. Keep async nodes non-blocking; use `run_sync` for short CPU work and a blocking pool for anything long.
+
+3. **Slow `Drop`.** A destructor that blocks (joins a thread, flushes synchronously) runs when jabba drops the node and delays the run's return.
+
+4. **Synchronous nodes** (`run_sync`) run to completion and cannot be interrupted at all.
+
+## C++
+
+Added together with the C++ implementation.
 
 ## Recommendations
 

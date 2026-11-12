@@ -161,3 +161,4 @@ cython_debug/
 
 # Rust build output (rust/ implementation)
 target/
+rust/Cargo.lock

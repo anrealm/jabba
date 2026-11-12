@@ -44,7 +44,7 @@ The order in which checks run is not specified; each conformance case contains e
 - **Fail-fast cancellation.** When a run fails fast, every node still running is cancelled and recorded as status `skipped`, error kind `cancelled`. Waiting for cancelled nodes never turns a failure into a timeout.
 - **Outer cancellation.** When the caller cancels the run, every node still running is cancelled, the cancellation propagates to the caller, and **no record is produced**.
 - Nodes that never started are recorded as `skipped` with no error kind.
-- **Synchronous nodes** run to completion; they cannot be interrupted. Timeouts and cancellation take effect only at suspension points of asynchronous nodes. A synchronous node that completes is recorded by the tick rule.
+- **Synchronous nodes** run to completion; they cannot be interrupted. Timeouts and cancellation take effect only at suspension points of asynchronous nodes. A synchronous node that completes is recorded by the tick rule; one that overran its own `timeout` is recorded `timeout` (error kind `timeout`) when it returns, its result is discarded, and it is then treated like any timed-out node.
 
 ## 4. Cancellation
 
