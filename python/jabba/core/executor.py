@@ -100,6 +100,7 @@ async def run_graph(
         for name in pending_deps:
             stat.nodes[name] = NodeStat(status="skipped")
         warn_still_running()
+        stat.freeze()
 
     failure: tuple[str, BaseException] | None = None
     try:
@@ -157,6 +158,7 @@ async def run_graph(
         # Cancelled from outside (client gone): nodes must not outlive it. No record.
         await stop_running()
         warn_still_running()
+        stat.freeze()
         raise
 
     if failure is not None:

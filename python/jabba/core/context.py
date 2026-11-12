@@ -31,9 +31,16 @@ class RequestStat:
     nodes: dict[str, NodeStat] = field(default_factory=dict)
     fields: dict[str, Any] = field(default_factory=dict)
     record_version: int = RECORD_VERSION
+    _frozen: bool = field(default=False, init=False, repr=False)
 
     def set(self, key: str, value: Any) -> None:
+        if self._frozen:
+            return  # the run has returned: late writes from background nodes are dropped
         self.fields[key] = value
+
+    def freeze(self) -> None:
+        """Called by the executor when the run returns; the record no longer changes."""
+        self._frozen = True
 
     def to_record(self) -> dict[str, Any]:
         """Finalized structured record: one per request, schema-versioned."""
@@ -53,7 +60,7 @@ class RequestStat:
                 }
                 for name, ns in self.nodes.items()
             },
-            "fields": self.fields,
+            "fields": dict(self.fields),
         }
 
 
