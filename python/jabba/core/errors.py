@@ -3,7 +3,14 @@ class JabbaError(Exception):
 
 
 class GraphCompileError(JabbaError):
-    """Graph specification is invalid: cycles, missing deps, contract violations."""
+    """Graph specification is invalid: cycles, missing deps, contract violations.
+
+    ``kind`` is the language-neutral error category from spec/semantics.md.
+    """
+
+    def __init__(self, message: str, *, kind: str = "invalid") -> None:
+        super().__init__(message)
+        self.kind = kind
 
 
 class NodeFailedError(JabbaError):

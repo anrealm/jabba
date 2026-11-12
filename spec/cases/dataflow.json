@@ -1,0 +1,37 @@
+{
+  "cases": [
+    {"name": "request_flows_to_output", "request": {"x": 3},
+     "graph": {"output": "b", "nodes": [
+       {"name": "a", "behavior": {"echo_request": true}},
+       {"name": "b", "deps": ["a"], "behavior": {"echo_inputs": true}}]},
+     "expect": {"status": "ok", "output": {"a": {"x": 3}},
+                "nodes": {"a": {"status": "ok", "error_kind": null}, "b": {"status": "ok"}}}},
+    {"name": "diamond_wiring",
+     "graph": {"output": "d", "nodes": [
+       {"name": "a", "behavior": {"value": 1}},
+       {"name": "b", "deps": ["a"], "behavior": {"echo_inputs": true}},
+       {"name": "c", "deps": ["a"], "behavior": {"echo_inputs": true}},
+       {"name": "d", "deps": ["b", "c"], "behavior": {"echo_inputs": true}}]},
+     "expect": {"status": "ok", "output": {"b": {"a": 1}, "c": {"a": 1}}}},
+    {"name": "independent_nodes_run_concurrently",
+     "description": "Each node waits for the other to start; sequential execution would hit the deadline",
+     "deadline_ms": 2000,
+     "graph": {"nodes": [
+       {"name": "a", "behavior": {"signal": "a_started", "wait_for": "b_started"}},
+       {"name": "b", "behavior": {"signal": "b_started", "wait_for": "a_started"}}]},
+     "expect": {"status": "ok", "nodes": {"a": {"status": "ok"}, "b": {"status": "ok"}}}},
+    {"name": "after_orders_without_data",
+     "graph": {"output": "compute", "nodes": [
+       {"name": "warmup", "behavior": {"sleep_ms": 50}},
+       {"name": "compute", "after": ["warmup"], "behavior": {"echo_inputs": true}}]},
+     "expect": {"status": "ok", "output": {}, "order": [["warmup", "compute"]]}},
+    {"name": "same_provider_in_deps_and_after",
+     "graph": {"output": "b", "nodes": [
+       {"name": "a", "behavior": {"value": 1}},
+       {"name": "b", "deps": ["a"], "after": ["a"], "behavior": {"echo_inputs": true}}]},
+     "expect": {"status": "ok", "output": {"a": 1}}},
+    {"name": "ctx_fields_reach_the_record",
+     "graph": {"nodes": [{"name": "w", "behavior": {"set_field": {"reports_count": 3}}}]},
+     "expect": {"status": "ok", "fields": {"reports_count": 3}}}
+  ]
+}

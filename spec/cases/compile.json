@@ -1,0 +1,31 @@
+{
+  "cases": [
+    {"name": "reserved_name", "graph": {"nodes": [{"name": "request"}]},
+     "expect": {"status": "compile_error", "compile_error": "reserved_name"}},
+    {"name": "duplicate_name", "graph": {"nodes": [{"name": "a"}, {"name": "a"}]},
+     "expect": {"status": "compile_error", "compile_error": "duplicate_name"}},
+    {"name": "unknown_dep", "graph": {"nodes": [{"name": "b", "deps": ["a"]}]},
+     "expect": {"status": "compile_error", "compile_error": "unknown_dep"}},
+    {"name": "unknown_after", "graph": {"nodes": [{"name": "b", "after": ["a"]}]},
+     "expect": {"status": "compile_error", "compile_error": "unknown_after"}},
+    {"name": "unknown_output", "graph": {"output": "x", "nodes": [{"name": "a"}]},
+     "expect": {"status": "compile_error", "compile_error": "unknown_output"}},
+    {"name": "optional_without_default",
+     "graph": {"nodes": [{"name": "a", "optional": true}, {"name": "b", "deps": ["a"]}]},
+     "expect": {"status": "compile_error", "compile_error": "optional_without_default"}},
+    {"name": "optional_without_default_is_fine_for_after_only_dependents",
+     "graph": {"nodes": [{"name": "a", "optional": true, "behavior": {"fail": "x"}},
+                         {"name": "b", "after": ["a"], "behavior": {"value": 1}}], "output": "b"},
+     "expect": {"status": "ok", "output": 1,
+                "nodes": {"a": {"status": "failed", "error_kind": "failed"}, "b": {"status": "ok"}}}},
+    {"name": "optional_output_without_default",
+     "graph": {"output": "a", "nodes": [{"name": "a", "optional": true}]},
+     "pending": {"python": "optional output without default compiles today (fixed by the optional-output PR)"},
+     "expect": {"status": "compile_error", "compile_error": "optional_output_without_default"}},
+    {"name": "cycle",
+     "graph": {"nodes": [{"name": "a", "deps": ["b"]}, {"name": "b", "deps": ["a"]}]},
+     "expect": {"status": "compile_error", "compile_error": "cycle"}},
+    {"name": "self_cycle_through_after", "graph": {"nodes": [{"name": "a", "after": ["a"]}]},
+     "expect": {"status": "compile_error", "compile_error": "cycle"}}
+  ]
+}

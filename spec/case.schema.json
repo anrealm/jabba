@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "jabba conformance case file",
+  "type": "object",
+  "required": ["cases"],
+  "additionalProperties": false,
+  "properties": {
+    "cases": {"type": "array", "items": {"$ref": "#/$defs/case"}}
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "required": ["name", "graph", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+        "description": {"type": "string"},
+        "graph": {
+          "type": "object",
+          "required": ["nodes"],
+          "additionalProperties": false,
+          "properties": {
+            "output": {"type": "string"},
+            "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}}
+          }
+        },
+        "request": {},
+        "deadline_ms": {"type": "number", "minimum": 0},
+        "cancel_after_ms": {"type": "number", "minimum": 0},
+        "settle_ms": {"type": "number", "minimum": 0, "description": "Wait after the run returns before reading the record and events"},
+        "requires": {"type": "array", "items": {"enum": ["ignore_cancel"]}},
+        "pending": {"type": "object", "additionalProperties": {"type": "string"}, "description": "language -> reason the case is expected to fail there"},
+        "expect": {"$ref": "#/$defs/expect"}
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "deps": {"type": "array", "items": {"type": "string"}},
+        "after": {"type": "array", "items": {"type": "string"}},
+        "optional": {"type": "boolean"},
+        "default": {},
+        "timeout_ms": {"type": "number", "minimum": 0},
+        "behavior": {"$ref": "#/$defs/behavior"}
+      }
+    },
+    "behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Executed in this order: signal, wait_for, sleep_ms, set_field, fail, then the return value (echo_inputs, echo_request or value; null if none)",
+      "properties": {
+        "signal": {"type": "string"},
+        "wait_for": {"type": "string"},
+        "sleep_ms": {"type": "number", "minimum": 0},
+        "ignore_cancel": {"type": "boolean", "description": "Keep sleeping through cancellation"},
+        "set_field": {"type": "object"},
+        "fail": {"type": "string"},
+        "echo_inputs": {"const": true, "description": "Return a map of data-dependency name -> value"},
+        "echo_request": {"const": true},
+        "value": {}
+      }
+    },
+    "expect": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {"enum": ["ok", "failed", "timeout", "cancelled", "compile_error"]},
+        "compile_error": {"type": "string"},
+        "error_node": {"type": "string"},
+        "output": {},
+        "nodes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {"enum": ["ok", "failed", "timeout", "skipped"]},
+              "error_kind": {"enum": [null, "failed", "timeout", "deadline", "cancelled"]}
+            }
+          }
+        },
+        "fields": {"type": "object"},
+        "order": {"type": "array", "items": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2}, "description": "[a, b]: a finished before b started"},
+        "stopped": {"type": "array", "items": {"type": "string"}, "description": "Nodes that must not have run to the end of their body"},
+        "max_duration_ms": {"type": "number", "minimum": 0}
+      }
+    }
+  }
+}
