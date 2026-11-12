@@ -64,3 +64,56 @@ jobs:
           cargo clippy --all-targets -- -D warnings
       - name: Test (5 consecutive runs to catch timing flakes)
         run: for i in 1 2 3 4 5; do cargo test --quiet; done
+
+  cpp:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, cxx: g++-13 }
+          - { os: ubuntu-latest, cxx: g++-14 }
+          - { os: ubuntu-24.04, cxx: clang++-16, apt: clang-16 }  # the oldest supported clang is not in newer images
+          - { os: ubuntu-latest, cxx: clang++-18, apt: clang-18 }
+          - { os: macos-latest, cxx: clang++ }
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@v4
+      - name: License copy matches the root LICENSE
+        working-directory: .
+        run: cmp LICENSE cpp/LICENSE
+      - name: Install the compiler
+        if: matrix.apt
+        run: sudo apt-get update -q && sudo apt-get install -y -q ${{ matrix.apt }}
+      - name: "Configure (Debug, -O0: no reliance on optimizer tail calls)"
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test (5 consecutive runs to catch timing flakes)
+        run: for i in 1 2 3 4 5; do ctest --test-dir build --output-on-failure; done
+
+  cpp-sanitizers:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: ["address,undefined", "thread"]
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the compiler
+        run: sudo apt-get update -q && sudo apt-get install -y -q clang-18
+      - name: Allow ThreadSanitizer's memory layout
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      - name: Configure
+        run: >
+          cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-sanitize-recover=all -fno-omit-frame-pointer"
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test (3 runs)
+        run: for i in 1 2 3; do ctest --test-dir build --output-on-failure; done
