@@ -22,7 +22,7 @@
                 "nodes": {"stubborn": {"status": "timeout", "error_kind": "deadline"}}}},
     {"name": "late_writes_do_not_reach_a_returned_record", "settle_ms": 400,
      "requires": ["ignore_cancel"],
-     "pending": {"python": "the per-node timeout waits for the node and the record is not frozen (fixed by the executor and record-freeze PRs)"},
+     "pending": {"python": "the record is not frozen (fixed by the record-freeze PR)"},
      "graph": {"nodes": [
        {"name": "b", "optional": true, "default": 0, "timeout_ms": 30,
         "behavior": {"sleep_ms": 300, "ignore_cancel": true, "set_field": {"late": true}}}]},

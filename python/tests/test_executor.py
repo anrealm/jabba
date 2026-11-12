@@ -331,3 +331,58 @@ async def test_record_error_kind_deadline_cancelled_and_none():
     with pytest.raises(GraphTimeoutError) as timed_out:
         await deadline_graph.run(None, timeout=0.05)
     assert timed_out.value.stat.to_record()["nodes"]["sibling"]["error_kind"] == "deadline"
+
+
+async def test_node_timeout_does_not_wait_for_a_node_that_ignores_cancel():
+    @node(optional=True, default=0, timeout=0.05)
+    async def stubborn() -> int:
+        try:
+            await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            await asyncio.sleep(1)  # swallowed cancel
+        return 5
+
+    @node()
+    async def consumer(stubborn: int) -> int:
+        return stubborn
+
+    graph = GraphSpec("g", output="consumer").add(stubborn, consumer).compile()
+    started = time.monotonic()
+    result = await graph.run(None)
+    assert time.monotonic() - started < 0.5
+    assert result.output == 0  # the default, not the late value
+    assert result.stat.nodes["stubborn"].status == "timeout"
+
+
+async def test_fail_fast_records_a_node_that_ignores_cancel_as_cancelled():
+    @node()
+    async def bad() -> int:
+        await asyncio.sleep(0.01)
+        raise RuntimeError("boom")
+
+    @node()
+    async def stubborn() -> int:
+        try:
+            await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            await asyncio.sleep(1)
+        return 1
+
+    graph = GraphSpec("g").add(bad, stubborn).compile()
+    with pytest.raises(NodeFailedError) as info:
+        await graph.run(None)
+    stubborn_stat = info.value.stat.nodes["stubborn"]
+    assert (stubborn_stat.status, stubborn_stat.error_kind) == ("skipped", "cancelled")
+    assert stubborn_stat.duration_ms is not None
+
+
+async def test_a_timeout_raised_by_the_node_itself_is_a_failure():
+    @node()
+    async def client_call() -> int:
+        raise TimeoutError("upstream did not answer")
+
+    graph = GraphSpec("g").add(client_call).compile()
+    with pytest.raises(NodeFailedError) as info:
+        await graph.run(None)
+    node_stat = info.value.stat.nodes["client_call"]
+    assert (node_stat.status, node_stat.error_kind) == ("failed", "failed")

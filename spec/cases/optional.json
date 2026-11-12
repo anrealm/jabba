@@ -26,7 +26,6 @@
      "expect": {"status": "ok", "output": 7}},
     {"name": "optional_timeout_does_not_wait_for_a_cancel_ignoring_node",
      "requires": ["ignore_cancel"],
-     "pending": {"python": "per-node timeout waits for the node to stop, and its late value replaces the default (fixed by the executor PR)"},
      "graph": {"output": "result", "nodes": [
        {"name": "b", "optional": true, "default": 0, "timeout_ms": 50,
         "behavior": {"sleep_ms": 1000, "ignore_cancel": true, "value": 2}},
