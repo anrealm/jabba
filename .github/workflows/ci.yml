@@ -73,8 +73,8 @@ jobs:
         include:
           - { os: ubuntu-latest, cxx: g++-13 }
           - { os: ubuntu-latest, cxx: g++-14 }
-          - { os: ubuntu-latest, cxx: clang++-16 }
-          - { os: ubuntu-latest, cxx: clang++-18 }
+          - { os: ubuntu-latest, cxx: clang++-16, apt: clang-16 }
+          - { os: ubuntu-latest, cxx: clang++-18, apt: clang-18 }
           - { os: macos-latest, cxx: clang++ }
     defaults:
       run:
@@ -84,6 +84,9 @@ jobs:
       - name: License copy matches the root LICENSE
         working-directory: .
         run: cmp LICENSE cpp/LICENSE
+      - name: Install the compiler
+        if: matrix.apt
+        run: sudo apt-get update -q && sudo apt-get install -y -q ${{ matrix.apt }}
       - name: "Configure (Debug, -O0: no reliance on optimizer tail calls)"
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_BUILD_TYPE=Debug
       - name: Build
@@ -102,6 +105,8 @@ jobs:
         working-directory: cpp
     steps:
       - uses: actions/checkout@v4
+      - name: Install the compiler
+        run: sudo apt-get update -q && sudo apt-get install -y -q clang-18
       - name: Allow ThreadSanitizer's memory layout
         run: sudo sysctl vm.mmap_rnd_bits=28
       - name: Configure
