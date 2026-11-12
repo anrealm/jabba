@@ -1,0 +1,37 @@
+{
+  "cases": [
+    {"name": "optional_failure_yields_default",
+     "graph": {"output": "consumer", "nodes": [
+       {"name": "flaky", "optional": true, "default": {"fallback": true}, "behavior": {"fail": "source down"}},
+       {"name": "consumer", "deps": ["flaky"], "behavior": {"echo_inputs": true}}]},
+     "expect": {"status": "ok", "output": {"flaky": {"fallback": true}},
+                "nodes": {"flaky": {"status": "failed", "error_kind": "failed"}}}},
+    {"name": "optional_timeout_yields_default",
+     "graph": {"output": "result", "nodes": [
+       {"name": "a", "behavior": {"value": 1}},
+       {"name": "b", "deps": ["a"], "optional": true, "default": 0, "timeout_ms": 50,
+        "behavior": {"sleep_ms": 1000, "value": 2}},
+       {"name": "result", "deps": ["a", "b"], "behavior": {"echo_inputs": true}}]},
+     "expect": {"status": "ok", "output": {"a": 1, "b": 0},
+                "nodes": {"a": {"status": "ok"}, "b": {"status": "timeout", "error_kind": "timeout"},
+                          "result": {"status": "ok"}}}},
+    {"name": "null_is_a_real_default",
+     "graph": {"output": "c", "nodes": [
+       {"name": "a", "optional": true, "default": null, "behavior": {"fail": "x"}},
+       {"name": "c", "deps": ["a"], "behavior": {"echo_inputs": true}}]},
+     "expect": {"status": "ok", "output": {"a": null}}},
+    {"name": "optional_output_degrades_to_default",
+     "graph": {"output": "a", "nodes": [
+       {"name": "a", "optional": true, "default": 7, "behavior": {"fail": "x"}}]},
+     "expect": {"status": "ok", "output": 7}},
+    {"name": "optional_timeout_does_not_wait_for_a_cancel_ignoring_node",
+     "requires": ["ignore_cancel"],
+     "pending": {"python": "per-node timeout waits for the node to stop, and its late value replaces the default (fixed by the executor PR)"},
+     "graph": {"output": "result", "nodes": [
+       {"name": "b", "optional": true, "default": 0, "timeout_ms": 50,
+        "behavior": {"sleep_ms": 1000, "ignore_cancel": true, "value": 2}},
+       {"name": "result", "deps": ["b"], "behavior": {"echo_inputs": true}}]},
+     "expect": {"status": "ok", "output": {"b": 0}, "max_duration_ms": 500,
+                "nodes": {"b": {"status": "timeout", "error_kind": "timeout"}}}}
+  ]
+}

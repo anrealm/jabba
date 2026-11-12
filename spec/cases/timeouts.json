@@ -1,0 +1,32 @@
+{
+  "cases": [
+    {"name": "non_optional_node_timeout_fails_the_graph",
+     "graph": {"nodes": [{"name": "slow", "timeout_ms": 50, "behavior": {"sleep_ms": 1000}}]},
+     "expect": {"status": "failed", "error_node": "slow",
+                "nodes": {"slow": {"status": "timeout", "error_kind": "timeout"}}}},
+    {"name": "graph_deadline_cancels_running_nodes", "deadline_ms": 30, "settle_ms": 400,
+     "graph": {"nodes": [{"name": "slow", "behavior": {"sleep_ms": 300}}]},
+     "expect": {"status": "timeout", "stopped": ["slow"],
+                "nodes": {"slow": {"status": "timeout", "error_kind": "deadline"}}}},
+    {"name": "graph_deadline_skips_nodes_not_started", "deadline_ms": 30,
+     "graph": {"nodes": [
+       {"name": "a", "behavior": {"sleep_ms": 300}},
+       {"name": "b", "deps": ["a"]}]},
+     "expect": {"status": "timeout",
+                "nodes": {"a": {"status": "timeout", "error_kind": "deadline"},
+                          "b": {"status": "skipped", "error_kind": null}}}},
+    {"name": "deadline_is_not_held_by_a_cancel_ignoring_node", "deadline_ms": 30,
+     "requires": ["ignore_cancel"],
+     "graph": {"nodes": [{"name": "stubborn", "behavior": {"sleep_ms": 1000, "ignore_cancel": true}}]},
+     "expect": {"status": "timeout", "max_duration_ms": 500,
+                "nodes": {"stubborn": {"status": "timeout", "error_kind": "deadline"}}}},
+    {"name": "late_writes_do_not_reach_a_returned_record", "settle_ms": 400,
+     "requires": ["ignore_cancel"],
+     "pending": {"python": "the per-node timeout waits for the node and the record is not frozen (fixed by the executor and record-freeze PRs)"},
+     "graph": {"nodes": [
+       {"name": "b", "optional": true, "default": 0, "timeout_ms": 30,
+        "behavior": {"sleep_ms": 300, "ignore_cancel": true, "set_field": {"late": true}}}]},
+     "expect": {"status": "ok", "fields": {},
+                "nodes": {"b": {"status": "timeout", "error_kind": "timeout"}}}}
+  ]
+}

@@ -19,9 +19,13 @@ class GraphSpec:
     def add(self, *nodes: Node) -> "GraphSpec":
         for n in nodes:
             if n.name in RESERVED_PARAMS:
-                raise GraphCompileError(f"graph '{self.name}': node name '{n.name}' is reserved")
+                raise GraphCompileError(
+                    f"graph '{self.name}': node name '{n.name}' is reserved", kind="reserved_name"
+                )
             if n.name in self._nodes:
-                raise GraphCompileError(f"graph '{self.name}': duplicate node name '{n.name}'")
+                raise GraphCompileError(
+                    f"graph '{self.name}': duplicate node name '{n.name}'", kind="duplicate_name"
+                )
             self._nodes[n.name] = n
         return self
 
@@ -37,13 +41,16 @@ class GraphSpec:
         for n in nodes.values():
             for dep in (*n.deps, *n.after):
                 if dep not in nodes:
-                    kind = "after" if dep in n.after else "dependency"
+                    is_after = dep in n.after
                     raise GraphCompileError(
-                        f"graph '{self.name}': node '{n.name}' has {kind} on unknown node '{dep}'"
+                        f"graph '{self.name}': node '{n.name}' has "
+                        f"{'after' if is_after else 'dependency'} on unknown node '{dep}'",
+                        kind="unknown_after" if is_after else "unknown_dep",
                     )
         if self.output is not None and self.output not in nodes:
             raise GraphCompileError(
-                f"graph '{self.name}': output points to unknown node '{self.output}'"
+                f"graph '{self.name}': output points to unknown node '{self.output}'",
+                kind="unknown_output",
             )
 
     def _check_optional_defaults(self, nodes: dict[str, Node]) -> None:
@@ -53,7 +60,8 @@ class GraphSpec:
                 if provider.optional and not provider.has_default:
                     raise GraphCompileError(
                         f"graph '{self.name}': optional node '{provider.name}' has data "
-                        f"dependents but declares no default"
+                        f"dependents but declares no default",
+                        kind="optional_without_default",
                     )
 
     def _check_annotations(self, nodes: dict[str, Node]) -> None:
@@ -67,7 +75,8 @@ class GraphSpec:
                     raise GraphCompileError(
                         f"graph '{self.name}': node '{n.name}' expects '{dep}' as "
                         f"{expected.__name__}, but node '{dep}' returns {provided.__name__} "
-                        f"— incompatible"
+                        f"— incompatible",
+                        kind="type_mismatch",
                     )
 
     def _topo_sort(self, nodes: dict[str, Node]) -> tuple[str, ...]:
@@ -87,7 +96,9 @@ class GraphSpec:
                     ready.append(child)
         if len(order) != len(nodes):
             stuck = sorted(name for name, d in indegree.items() if d > 0)
-            raise GraphCompileError(f"graph '{self.name}': cycle involving nodes {stuck}")
+            raise GraphCompileError(
+                f"graph '{self.name}': cycle involving nodes {stuck}", kind="cycle"
+            )
         return tuple(order)
 
 

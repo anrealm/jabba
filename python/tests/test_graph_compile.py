@@ -105,3 +105,27 @@ def test_after_participates_in_cycle_detection():
     b = make("b", deps=("a",))
     with pytest.raises(GraphCompileError, match="cycle"):
         GraphSpec("g").add(a, b).compile()
+
+
+@pytest.mark.parametrize(
+    ("build", "kind"),
+    [
+        (lambda: GraphSpec("g").add(make("request")), "reserved_name"),
+        (lambda: GraphSpec("g").add(make("a"), make("a")), "duplicate_name"),
+        (lambda: GraphSpec("g").add(make("b", deps=("a",))).compile(), "unknown_dep"),
+        (lambda: GraphSpec("g").add(make("b", after=("a",))).compile(), "unknown_after"),
+        (lambda: GraphSpec("g", output="x").add(make("a")).compile(), "unknown_output"),
+        (
+            lambda: GraphSpec("g").add(make("a", optional=True), make("b", deps=("a",))).compile(),
+            "optional_without_default",
+        ),
+        (
+            lambda: GraphSpec("g").add(make("a", deps=("b",)), make("b", deps=("a",))).compile(),
+            "cycle",
+        ),
+    ],
+)
+def test_compile_error_kind(build, kind):
+    with pytest.raises(GraphCompileError) as info:
+        build()
+    assert info.value.kind == kind

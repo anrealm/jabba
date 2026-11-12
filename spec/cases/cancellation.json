@@ -1,0 +1,8 @@
+{
+  "cases": [
+    {"name": "outer_cancellation_stops_nodes_and_produces_no_record",
+     "cancel_after_ms": 30, "settle_ms": 400,
+     "graph": {"nodes": [{"name": "slow", "behavior": {"sleep_ms": 300}}]},
+     "expect": {"status": "cancelled", "stopped": ["slow"]}}
+  ]
+}
