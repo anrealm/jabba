@@ -78,6 +78,7 @@ async def run_graph(
             node_stat = stat.nodes.setdefault(name, NodeStat(status="timeout"))
             node_stat.status = "timeout"
             node_stat.error = f"graph deadline after {timeout}s"
+            node_stat.error_kind = "deadline"
         finish("timeout")
         raise GraphTimeoutError(graph.name, stat) from None
     except BaseException:
@@ -129,14 +130,17 @@ async def _run_node(node: Node, results: dict[str, Any], request: Any, ctx: Ctx)
     except TimeoutError:
         node_stat.status = "timeout"
         node_stat.error = f"node timeout after {node.timeout}s"
+        node_stat.error_kind = "timeout"
         raise
     except asyncio.CancelledError:
         node_stat.status = "skipped"
         node_stat.error = "cancelled"
+        node_stat.error_kind = "cancelled"
         raise
     except Exception as error:
         node_stat.status = "failed"
         node_stat.error = f"{type(error).__name__}: {error}"
+        node_stat.error_kind = "failed"
         raise
     finally:
         node_stat.duration_ms = (time.monotonic() - started) * 1000
