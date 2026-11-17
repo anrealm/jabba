@@ -54,6 +54,8 @@ This is [`examples/greeting.cpp`](examples/greeting.cpp), built and run by the t
 
 What a timeout or cancellation can and cannot stop: [`docs/cancellation.md`](../docs/cancellation.md).
 
+Nodes in other languages (and C++ nodes for graphs in other languages): [`docs/interop.md`](../docs/interop.md).
+
 ## Building
 
 ```cmake

@@ -81,9 +81,11 @@ jobs:
         working-directory: cpp
     steps:
       - uses: actions/checkout@v4
-      - name: License copy matches the root LICENSE
+      - name: Copies match their originals (license, ABI header)
         working-directory: .
-        run: cmp LICENSE cpp/LICENSE
+        run: |
+          cmp LICENSE cpp/LICENSE
+          cmp ffi/jabba_ffi.h cpp/include/jabba/jabba_ffi.h
       - name: Install the compiler
         if: matrix.apt
         run: sudo apt-get update -q && sudo apt-get install -y -q ${{ matrix.apt }}
@@ -112,7 +114,9 @@ jobs:
       - name: Configure
         run: >
           cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=clang-18
           -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-sanitize-recover=all -fno-omit-frame-pointer"
+          -DCMAKE_C_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-sanitize-recover=all -fno-omit-frame-pointer"
       - name: Build
         run: cmake --build build -j 4
       - name: Test (3 runs)

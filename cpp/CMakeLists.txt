@@ -29,6 +29,37 @@ if(JABBA_BUILD_TESTS)
     target_compile_definitions(jabba_conformance PRIVATE
         JABBA_SPEC_DIR_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/../spec")
 
+    # Foreign nodes (ffi/): the C protocol kit, the testkit, and the tests through the ABI.
+    enable_language(C)
+    set(JABBA_FFI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../ffi)
+    add_library(jabba_ffi_testing STATIC ${JABBA_FFI_DIR}/testing/nodes.c ${JABBA_FFI_DIR}/testing/host.c)
+    set_target_properties(jabba_ffi_testing PROPERTIES C_STANDARD 11 POSITION_INDEPENDENT_CODE ON)
+    target_include_directories(jabba_ffi_testing PUBLIC ${JABBA_FFI_DIR}/testing)
+    target_link_libraries(jabba_ffi_testing PUBLIC Threads::Threads)
+
+    # Shared, so that hosts in other languages can load it (Python via ctypes, ...).
+    add_library(jabba_testkit SHARED testkit/testkit.cpp)
+    target_include_directories(jabba_testkit PUBLIC ${JABBA_FFI_DIR}/testing)
+    target_link_libraries(jabba_testkit PRIVATE jabba::jabba)
+
+    add_executable(jabba_ffi tests/ffi.cpp)
+    target_link_libraries(jabba_ffi PRIVATE jabba::jabba jabba_ffi_testing)
+    add_test(NAME ffi COMMAND jabba_ffi)
+
+    add_executable(jabba_conformance_ffi tests/conformance.cpp)
+    target_link_libraries(jabba_conformance_ffi PRIVATE jabba::jabba jabba_testkit)
+    target_compile_definitions(jabba_conformance_ffi PRIVATE JABBA_CONFORMANCE_FOREIGN
+        JABBA_SPEC_DIR_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/../spec")
+    add_test(NAME conformance_ffi COMMAND jabba_conformance_ffi)
+    set_tests_properties(conformance_ffi PROPERTIES ENVIRONMENT "JABBA_FOREIGN=testkit")
+
+    if(NOT MSVC)
+        foreach(target jabba_ffi jabba_conformance_ffi jabba_testkit)
+            target_compile_options(${target} PRIVATE -Wall -Wextra -Wshadow -Wconversion -Wsign-conversion -Werror)
+        endforeach()
+        target_compile_options(jabba_ffi_testing PRIVATE -Wall -Wextra -Werror)
+    endif()
+
     add_executable(jabba_example examples/greeting.cpp)
     target_link_libraries(jabba_example PRIVATE jabba::jabba)
     if(NOT MSVC)
