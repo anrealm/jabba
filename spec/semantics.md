@@ -27,6 +27,7 @@ A graph is assembled, then compiled once into an immutable graph; nothing is val
 | `optional_output_without_default` | the `output` node is optional but has no default |
 | `cycle` | dependencies (data or `after`, including a node on itself) form a cycle |
 | `type_mismatch` | a provider's output type is incompatible with a consumer's input type; how strictly this is checked is language-specific |
+| `abi_mismatch` | a foreign node declares another version of the foreign-node ABI ([`ffi.md`](ffi.md)) |
 
 The order in which checks run is not specified; each conformance case contains exactly one error.
 

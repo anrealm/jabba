@@ -20,7 +20,12 @@
 
 #include <jabba/jabba.hpp>
 
-#include "json_parse.hpp"
+#ifdef JABBA_CONFORMANCE_FOREIGN
+#include <jabba/ffi.hpp>
+
+#include "jabba_testkit.h"
+#endif
+
 
 using jabba::Json;
 using jabba::JsonObject;
@@ -221,17 +226,52 @@ struct Outcome {
     double duration_ms = 0;
 };
 
-void add_nodes(jabba::GraphBuilder<Json>& g, const Json& c, const std::shared_ptr<Trace>& trace) {
+#ifdef JABBA_CONFORMANCE_FOREIGN
+/// Every node is foreign: a testkit node behind the ABI (JABBA_FOREIGN=testkit).
+struct Testkit {
+    jabba_testkit_session* session = jabba_testkit_session_new();
+    ~Testkit() { jabba_testkit_session_free(session); }
+    std::vector<std::string> events() {
+        std::string buf(jabba_testkit_events(session, nullptr, 0), '\0');
+        jabba_testkit_events(session, buf.data(), buf.size());
+        auto parsed = jabba::parse_json(buf);
+        return strings(&parsed);
+    }
+};
+#else
+struct Testkit {
+    std::vector<std::string> events() { return {}; }
+};
+#endif
+
+bool foreign_mode() {
+    const char* f = std::getenv("JABBA_FOREIGN");
+    return f && std::string(f) == "testkit";
+}
+
+void add_nodes(jabba::GraphBuilder<Json>& g, const Json& c, const std::shared_ptr<Trace>& trace, Testkit& testkit) {
+    (void)testkit;
     auto* nodes = at(*at(c, "graph"), "nodes")->get_if<jabba::JsonArray>();
     for (auto& n : *nodes) {
         auto name = str(at(n, "name"));
         Json behavior = at(n, "behavior") ? *at(n, "behavior") : Json(JsonObject{});
         auto deps = strings(at(n, "deps"));
         if (flag(at(behavior, "echo_request"))) deps.emplace_back(jabba::request_name);
-        auto def = jabba::node(name, jabba::deps_dyn<Json>(deps),
+        auto def = [&] {
+#ifdef JABBA_CONFORMANCE_FOREIGN
+            if (foreign_mode()) {
+                jabba::JsonArray dep_list;
+                for (auto& d : deps) dep_list.emplace_back(d);
+                auto spec = Json(JsonObject{{"name", name}, {"deps", dep_list}, {"behavior", behavior}}).dump();
+                auto f = jabba::ffi::Foreign::adopt(jabba_testkit_node(testkit.session, spec.data(), spec.size()));
+                return jabba::ffi::foreign<Json>(name, jabba::deps_dyn<Json>(deps), f);
+            }
+#endif
+            return jabba::node(name, jabba::deps_dyn<Json>(deps),
                                [behavior, name, trace](const jabba::DynInputs<Json>& in, jabba::Ctx& ctx) {
                                    return run_behavior(behavior, name, trace, in, ctx);
                                });
+        }();
         def.after(strings(at(n, "after")));
         if (flag(at(n, "optional"))) def.optional();
         if (auto* d = at(n, "default")) def.default_value(*d);
@@ -254,8 +294,9 @@ void take(Outcome& o, jabba::RunResult<O>& r) {
 
 Outcome run_case(const Json& c) {
     auto trace = std::make_shared<Trace>();
+    Testkit testkit;
     jabba::GraphBuilder<Json> g(str(at(c, "name")));
-    add_nodes(g, c, trace);
+    add_nodes(g, c, trace, testkit);
 
     jabba::RunOptions options;
     if (auto ms = num(at(c, "deadline_ms"))) options.deadline = millis(*ms);
@@ -289,7 +330,7 @@ Outcome run_case(const Json& c) {
     }
     o.duration_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
     if (auto ms = num(at(c, "settle_ms"))) std::this_thread::sleep_for(millis(*ms));
-    o.events = trace->snapshot();
+    o.events = foreign_mode() ? testkit.events() : trace->snapshot();
     return o;
 }
 
@@ -359,7 +400,7 @@ std::vector<std::pair<std::string, Json>> load_cases() {
         std::ifstream in(p);
         std::stringstream buf;
         buf << in.rdbuf();
-        auto file = json_parse::parse(buf.str());
+        auto file = jabba::parse_json(buf.str());
         for (auto& c : *at(file, "cases")->get_if<jabba::JsonArray>()) cases.emplace_back(p.filename().string(), c);
     }
     return cases;
@@ -368,6 +409,7 @@ std::vector<std::pair<std::string, Json>> load_cases() {
 }  // namespace
 
 int main() {
+    if (foreign_mode()) std::printf("mode: every node is foreign (testkit over the ABI)\n");
     auto cases = load_cases();
     std::set<std::string> names;
     std::vector<std::string> failures;

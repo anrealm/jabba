@@ -60,6 +60,7 @@ enum class CompileErrorKind {
     optional_output_without_default,
     cycle,
     type_mismatch,
+    abi_mismatch,
 };
 
 inline std::string_view to_string(CompileErrorKind k) {
@@ -73,6 +74,7 @@ inline std::string_view to_string(CompileErrorKind k) {
         case CompileErrorKind::optional_output_without_default: return "optional_output_without_default";
         case CompileErrorKind::cycle: return "cycle";
         case CompileErrorKind::type_mismatch: return "type_mismatch";
+        case CompileErrorKind::abi_mismatch: return "abi_mismatch";
     }
     return "?";
 }
@@ -122,6 +124,9 @@ Value make_value(T&& v) {
 
 struct Shared {
     std::string request_id;
+    /// When set, fields go here instead of into `fields` (a node exported to another
+    /// language writes into its host's record).
+    std::function<void(const std::string&, const Json&)> forward;
     std::mutex mutex;
     bool frozen = false;
     JsonObject fields;
@@ -145,6 +150,10 @@ public:
     /// Write a field into the run's record. Last write wins; writes after the run
     /// has returned are dropped.
     void set(std::string key, Json value) {
+        if (shared_->forward) {
+            shared_->forward(key, value);
+            return;
+        }
         std::lock_guard lock(shared_->mutex);
         if (shared_->frozen) return;
         for (auto& [k, v] : shared_->fields) {
