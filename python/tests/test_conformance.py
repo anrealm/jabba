@@ -1,4 +1,6 @@
+import asyncio
 import json
+import os
 
 import jsonschema
 import pytest
@@ -45,3 +47,16 @@ def test_case_files_match_schema():
 def test_case_names_are_unique():
     names = [case["name"] for case in CASES]
     assert len(names) == len(set(names))
+
+
+@pytest.mark.skipif(os.environ.get("JABBA_FOREIGN") != "testkit", reason="foreign mode only")
+async def test_every_foreign_call_ended():
+    """After all cases: nothing is left behind (calls of nodes that ignored cancellation
+    end once their work does)."""
+    from jabba import ffi
+
+    for _ in range(300):
+        if ffi.live_calls() == 0:
+            break
+        await asyncio.sleep(0.01)
+    assert ffi.live_calls() == 0

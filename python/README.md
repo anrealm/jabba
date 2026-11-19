@@ -55,6 +55,8 @@ async def handle(payload: dict):
 
 What a timeout or cancellation can and cannot stop: [docs/cancellation.md](../docs/cancellation.md).
 
+Nodes implemented in other languages (C++, Rust): [docs/interop.md](../docs/interop.md).
+
 ## Node lifecycle
 
 Nodes that need resources (connection pools, models, warm caches) override `setup(resources)` / `shutdown()` — called once at app startup/shutdown, deduplicated across graphs. Per-request initialization is just a regular node.

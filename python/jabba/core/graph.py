@@ -34,6 +34,10 @@ class GraphSpec:
         self._check_edges(nodes)
         self._check_optional_defaults(nodes)
         self._check_annotations(nodes)
+        for n in nodes.values():  # nodes with wiring rules of their own (jabba.ffi)
+            check = getattr(n, "check_wiring", None)
+            if check is not None:
+                check(nodes, self.name)
         order = self._topo_sort(nodes)
         return CompiledGraph(name=self.name, nodes=nodes, order=order, output=self.output)
 

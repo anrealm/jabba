@@ -37,7 +37,10 @@ if(JABBA_BUILD_TESTS)
     target_include_directories(jabba_ffi_testing PUBLIC ${JABBA_FFI_DIR}/testing)
     target_link_libraries(jabba_ffi_testing PUBLIC Threads::Threads)
 
-    # Shared, so that hosts in other languages can load it (Python via ctypes, ...).
+    # Shared, so that hosts in other languages can load them (Python via ctypes, ...).
+    add_library(jabba_ffi_testing_shared SHARED ${JABBA_FFI_DIR}/testing/nodes.c ${JABBA_FFI_DIR}/testing/host.c)
+    set_target_properties(jabba_ffi_testing_shared PROPERTIES C_STANDARD 11 OUTPUT_NAME jabba_ffi_testing)
+    target_link_libraries(jabba_ffi_testing_shared PRIVATE Threads::Threads)
     add_library(jabba_testkit SHARED testkit/testkit.cpp)
     target_include_directories(jabba_testkit PUBLIC ${JABBA_FFI_DIR}/testing)
     target_link_libraries(jabba_testkit PRIVATE jabba::jabba)

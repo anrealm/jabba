@@ -1,9 +1,14 @@
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 #: Bump when the finalized record layout changes; consumers rely on this.
 RECORD_VERSION = 1
+
+# Foreign nodes write fields from their own threads (jabba.ffi). Module-level, so that a
+# RequestStat stays copyable.
+_FIELDS_LOCK = threading.Lock()
 
 NodeStatus = Literal["ok", "failed", "timeout", "skipped"]
 GraphStatus = Literal["ok", "failed", "timeout"]
@@ -34,13 +39,15 @@ class RequestStat:
     _frozen: bool = field(default=False, init=False, repr=False)
 
     def set(self, key: str, value: Any) -> None:
-        if self._frozen:
-            return  # the run has returned: late writes from background nodes are dropped
-        self.fields[key] = value
+        with _FIELDS_LOCK:
+            if self._frozen:
+                return  # the run has returned: late writes from background nodes are dropped
+            self.fields[key] = value
 
     def freeze(self) -> None:
         """Called by the executor when the run returns; the record no longer changes."""
-        self._frozen = True
+        with _FIELDS_LOCK:
+            self._frozen = True
 
     def to_record(self) -> dict[str, Any]:
         """Finalized structured record: one per request, schema-versioned."""
