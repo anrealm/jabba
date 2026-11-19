@@ -1,6 +1,7 @@
 """Runs the language-neutral conformance cases from spec/cases against the Python core."""
 
 import asyncio
+import ctypes
 import json
 import os
 from dataclasses import dataclass, field
@@ -101,14 +102,61 @@ class Outcome:
     duration_ms: float = 0.0
 
 
+#: JABBA_FOREIGN=testkit: every node is foreign, a testkit node behind the ABI, loaded
+#: from the shared library JABBA_TESTKIT_LIB (built by cpp/CMakeLists.txt).
+FOREIGN = os.environ.get("JABBA_FOREIGN") == "testkit"
+
+
+class Testkit:
+    def __init__(self, path: str) -> None:
+        lib = self.lib = ctypes.CDLL(path)
+        lib.jabba_testkit_session_new.restype = ctypes.c_void_p
+        lib.jabba_testkit_session_free.argtypes = [ctypes.c_void_p]
+        lib.jabba_testkit_node.restype = ctypes.c_void_p
+        lib.jabba_testkit_node.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+        lib.jabba_testkit_events.restype = ctypes.c_size_t
+        lib.jabba_testkit_events.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
+
+    def node(self, session: int, n: dict[str, Any]) -> Any:
+        from jabba import ffi
+
+        behavior = n.get("behavior", {})
+        deps = list(n.get("deps", []))
+        if behavior.get("echo_request"):
+            deps.append("request")
+        spec = json.dumps({"name": n["name"], "deps": deps, "behavior": behavior}).encode()
+        instance = ffi.Foreign(self.lib.jabba_testkit_node(session, spec, len(spec)), keep=self.lib)
+        policy: dict[str, Any] = {"after": n.get("after", []), "optional": n.get("optional", False)}
+        if "default" in n:
+            policy["default"] = n["default"]
+        if n.get("timeout_ms") is not None:
+            policy["timeout"] = n["timeout_ms"] / 1000
+        return ffi.foreign(instance, name=n["name"], deps=deps, **policy)
+
+    def events(self, session: int) -> list[str]:
+        size = self.lib.jabba_testkit_events(session, None, 0)
+        buf = ctypes.create_string_buffer(size)
+        self.lib.jabba_testkit_events(session, buf, size)
+        return json.loads(buf.raw[:size])
+
+
+_testkit = Testkit(os.environ["JABBA_TESTKIT_LIB"]) if FOREIGN else None
+
+
 async def run_case(case: dict[str, Any]) -> Outcome:
     trace = Trace()
     graph_spec = case["graph"]
+    session = _testkit.lib.jabba_testkit_session_new() if _testkit else None
     try:
         spec = GraphSpec(case["name"], output=graph_spec.get("output"))
-        spec.add(*(ScriptedNode(n, trace) for n in graph_spec["nodes"]))
+        if _testkit:
+            spec.add(*(_testkit.node(session, n) for n in graph_spec["nodes"]))
+        else:
+            spec.add(*(ScriptedNode(n, trace) for n in graph_spec["nodes"]))
         graph = spec.compile()
     except GraphCompileError as error:
+        if _testkit:
+            _testkit.lib.jabba_testkit_session_free(session)
         return Outcome(status="compile_error", compile_error=error.kind)
 
     deadline_ms = case.get("deadline_ms")
@@ -138,6 +186,9 @@ async def run_case(case: dict[str, Any]) -> Outcome:
     await asyncio.sleep(case.get("settle_ms", 0) / 1000)
     if stat is not None:
         outcome.record = stat.to_record()
+    if _testkit:
+        outcome.events = _testkit.events(session)
+        _testkit.lib.jabba_testkit_session_free(session)
     return outcome
 
 

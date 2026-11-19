@@ -36,6 +36,20 @@ jobs:
             python -m pytest -q
             echo "::endgroup::"
           done
+      - name: Build the native test libraries (protocol kit, C++ testkit)
+        working-directory: cpp
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build build -j 4 --target jabba_ffi_testing_shared jabba_testkit
+      - name: Foreign nodes — C and C++ nodes in Python graphs (5 runs)
+        env:
+          JABBA_FFI_TESTING_LIB: ${{ github.workspace }}/cpp/build/libjabba_ffi_testing.so
+          JABBA_TESTKIT_LIB: ${{ github.workspace }}/cpp/build/libjabba_testkit.so
+          JABBA_FOREIGN: testkit
+        run: |
+          for i in 1 2 3 4 5; do
+            python -m pytest -q tests/test_ffi.py tests/test_conformance.py
+          done
 
   rust:
     runs-on: ${{ matrix.os }}

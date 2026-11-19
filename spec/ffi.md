@@ -5,7 +5,7 @@
 ## 1. Versions
 
 - Every struct starts with `size` (`jabba_node` with `abi`, then `size`). A reader checks `size` before reading fields added later. Adding a field or a kind does not change `JABBA_FFI_ABI`; only an incompatible change does.
-- A node with another `abi`, or a `jabba_node` smaller than the reader needs, is rejected when the graph is compiled: error kind `abi_mismatch`.
+- A node with another `abi`, or a `jabba_node` smaller than the reader needs, is rejected when the graph is compiled: error kind `abi_mismatch`. The host does not call into such an instance at all — not even `release`, whose position it cannot know — and leaks it.
 - An unknown kind in a declaration is `type_mismatch`; an unknown result status counts as `FAILED`.
 
 ## 2. Values

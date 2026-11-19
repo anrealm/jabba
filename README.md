@@ -13,6 +13,6 @@ Jabba is being built as a polyglot library: one execution semantics, native impl
 | [`cpp/`](cpp/README.md) | C++20 implementation: header-only, standard library only |
 | [`spec/`](spec/) | Language-neutral semantics, record schema, conformance cases |
 
-All three pass the same conformance cases. A graph can mix languages: see [`docs/interop.md`](docs/interop.md) (C++ today; Python and Rust next).
+All three pass the same conformance cases. A graph can mix languages: see [`docs/interop.md`](docs/interop.md) (C++ and Python today; Rust next).
 
 License: MIT.
