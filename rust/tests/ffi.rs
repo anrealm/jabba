@@ -208,9 +208,11 @@ fn a_node_timeout_cancels_the_foreign_call() {
     let Some((kit, _serial)) = kit() else { return };
     reset(kit);
     let started = Instant::now();
+    // completes only when cancelled: the timeout must cancel it (a node completing on its
+    // own could beat a late timer, and then no cancel is due)
     let r = run_one(
         kit,
-        "jt_node_delay",
+        "jt_node_cancel_inline",
         Some(Duration::from_millis(3)),
         None,
         true,
@@ -327,19 +329,21 @@ fn abi_and_kind_mismatches_are_compile_errors() {
     let Some((kit, _serial)) = kit() else { return };
     reset(kit);
     let kind = |r: Result<_, CompileError>| r.map(|_| ()).expect_err("a compile error").kind;
-    let compile = |factory: &str| {
-        let f = unsafe { Foreign::from_factory(kit.factory(factory)) };
+    let bad = unsafe { kit.factory("jt_node_bad_abi")() };
+    let compile = |f: Foreign| {
         let mut g = Graph::builder::<Vec<f64>>("g");
         let n = g.add(node("n").foreign::<Json>(&f));
         g.compile_with_output(&n)
     };
     assert_eq!(
-        kind(compile("jt_node_bad_abi")),
+        kind(compile(unsafe { Foreign::adopt(bad) })),
         CompileErrorKind::AbiMismatch
     );
     // it takes an input the graph does not wire
     assert_eq!(
-        kind(compile("jt_node_f64_scale")),
+        kind(compile(unsafe {
+            Foreign::from_factory(kit.factory("jt_node_f64_scale"))
+        })),
         CompileErrorKind::TypeMismatch
     );
     // it returns f64s, not json
@@ -357,6 +361,8 @@ fn abi_and_kind_mismatches_are_compile_errors() {
     assert_eq!(c.instances_made, 3);
     // the one with another ABI is never called into, not even released
     assert_eq!(c.instances_released, 2);
+    // A host cannot know where its release is; the test knows the kit's layout.
+    unsafe { ((*bad).release.unwrap())((*bad).self_) };
 }
 
 #[test]

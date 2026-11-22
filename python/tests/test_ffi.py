@@ -119,7 +119,11 @@ async def test_a_node_completing_from_its_thread(kit):
 
 async def test_a_node_timeout_cancels_the_foreign_call(kit):
     started = time.monotonic()
-    result = await run_one(kit, "jt_node_delay", timeout=0.003, optional=True, default="default")
+    # completes only when cancelled: the timeout must cancel it (a node completing on its
+    # own could beat a late timer, and then no cancel is due)
+    result = await run_one(
+        kit, "jt_node_cancel_inline", timeout=0.003, optional=True, default="default"
+    )
     assert time.monotonic() - started < 0.1
     assert result.output == "default"
     assert result.stat.nodes["n"].status == "timeout"

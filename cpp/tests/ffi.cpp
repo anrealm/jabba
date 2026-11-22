@@ -87,7 +87,9 @@ TEST(import_a_node_completing_from_its_thread) {
 TEST(a_node_timeout_cancels_the_foreign_call) {
     jt_counters_reset();
     auto started = std::chrono::steady_clock::now();
-    auto r = run_one<Json>(&jt_node_delay, 3ms, {}, true);
+    // completes only when cancelled: the timeout must cancel it (a node completing on its
+    // own could beat a late timer, and then no cancel is due)
+    auto r = run_one<Json>(&jt_node_cancel_inline, 3ms, {}, true);
     CHECK(std::chrono::steady_clock::now() - started < 15ms + 50ms);
     CHECK(r.ok());
     CHECK(r.stat->node("n")->status == NodeStatus::timeout);
@@ -161,7 +163,8 @@ TEST(a_failing_node_reports_its_error) {
 
 TEST(abi_and_kind_mismatches_are_compile_errors) {
     jt_counters_reset();
-    CHECK(compile_error_of([] { (void)ffi::foreign<Json>("n", jabba::Deps<>{}, ffi::Foreign::from_factory(&jt_node_bad_abi)); }) ==
+    const jabba_node* bad = jt_node_bad_abi();
+    CHECK(compile_error_of([bad] { (void)ffi::foreign<Json>("n", jabba::Deps<>{}, ffi::Foreign::adopt(bad)); }) ==
           jabba::CompileErrorKind::abi_mismatch);
     CHECK(compile_error_of([] { (void)ffi::foreign<Json>("n", jabba::Deps<>{}, ffi::Foreign::from_factory(&jt_node_f64_scale)); }) ==
           jabba::CompileErrorKind::type_mismatch);  // it takes an input the graph does not wire
@@ -175,6 +178,7 @@ TEST(abi_and_kind_mismatches_are_compile_errors) {
     jt_counters_get(&c);
     CHECK(c.instances_made == 3);
     CHECK(c.instances_released == 2);  // the one with another ABI is never called into, not even released
+    bad->release(bad->self);           // a host cannot know where it is; the test knows the kit's layout
 }
 
 TEST(arrays_cross_without_copies_and_are_released_once) {
