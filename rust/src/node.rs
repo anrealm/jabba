@@ -151,6 +151,11 @@ pub struct DynInputs<V> {
 }
 
 impl<V> DynInputs<V> {
+    #[cfg_attr(not(feature = "ffi"), allow(dead_code))]
+    pub(crate) fn from_parts(items: Vec<(Arc<str>, Arc<V>)>) -> Self {
+        DynInputs { items }
+    }
+
     pub fn get(&self, name: &str) -> Option<&Arc<V>> {
         self.items
             .iter()
@@ -202,8 +207,8 @@ pub fn node(name: impl Into<String>) -> NodeBuilder<()> {
 /// A node with its dependencies chosen; finish it with `run` or `run_sync`.
 #[must_use = "a node does nothing until it is finished with `run` and added to a graph"]
 pub struct NodeBuilder<I> {
-    name: Arc<str>,
-    slots: Vec<(Arc<str>, TypeTag)>,
+    pub(crate) name: Arc<str>,
+    pub(crate) slots: Vec<(Arc<str>, TypeTag)>,
     _inputs: PhantomData<fn() -> I>,
 }
 
@@ -277,6 +282,8 @@ pub struct NodeDef<T> {
     pub(crate) optional: bool,
     pub(crate) default: Option<Value>,
     pub(crate) timeout: Option<Duration>,
+    /// A problem found while building the node (a foreign node's kinds), reported by compile.
+    pub(crate) error: Option<crate::error::CompileError>,
     _type: PhantomData<fn() -> T>,
 }
 
@@ -291,6 +298,7 @@ impl<T: Send + Sync + 'static> NodeDef<T> {
             optional: false,
             default: None,
             timeout: None,
+            error: None,
             _type: PhantomData,
         }
     }

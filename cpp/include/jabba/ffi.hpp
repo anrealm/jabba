@@ -400,13 +400,14 @@ inline std::size_t node_struct_end() { return offsetof(jabba_node, release) + si
 // ---- import: a foreign node in a C++ graph ---------------------------------------------
 
 /// A node instance from another language. Owns it: `release` is called once, after
-/// the graph and every call that used it are gone.
+/// the graph and every call that used it are gone — unless it declares another ABI: then
+/// it is never called into at all, and leaks (spec/ffi.md).
 class Foreign {
 public:
     /// Take ownership of an instance (from a factory, a capsule, a symbol...).
     static Foreign adopt(const jabba_node* node) {
         if (!node) throw std::invalid_argument("jabba::ffi::Foreign: null node");
-        return Foreign(std::shared_ptr<Instance>(new Instance{node}));
+        return Foreign(std::shared_ptr<Instance>(new Instance{node, compatible(*node)}));
     }
     static Foreign from_factory(jabba_node_factory factory) { return adopt(factory()); }
 
@@ -414,11 +415,17 @@ public:
 
     struct Instance {
         const jabba_node* node;
-        ~Instance() { node->release(node->self); }
+        bool compatible;
+        ~Instance() {
+            if (compatible) node->release(node->self);
+        }
     };
     std::shared_ptr<Instance> instance() const { return inst_; }
 
 private:
+    static bool compatible(const jabba_node& n) {
+        return n.abi == JABBA_FFI_ABI && n.size >= offsetof(jabba_node, release) + sizeof(void (*)(void*));
+    }
     explicit Foreign(std::shared_ptr<Instance> inst) : inst_(std::move(inst)) {}
     std::shared_ptr<Instance> inst_;
 };
@@ -433,6 +440,7 @@ inline void check_foreign(const std::string& name, const jabba_node& n, const st
     };
     if (n.abi != JABBA_FFI_ABI) fail(CompileErrorKind::abi_mismatch, "ABI version " + std::to_string(n.abi) + ", expected " + std::to_string(JABBA_FFI_ABI));
     if (n.size < node_struct_end()) fail(CompileErrorKind::abi_mismatch, "node struct too small");
+    if (!n.start || !n.cancel || !n.end) fail(CompileErrorKind::abi_mismatch, "start, cancel and end are required");
     if (n.n_inputs != inputs.size()) {
         fail(CompileErrorKind::type_mismatch,
              "takes " + std::to_string(n.n_inputs) + " inputs, the graph wires " + std::to_string(inputs.size()));

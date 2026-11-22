@@ -49,8 +49,19 @@ if(JABBA_BUILD_TESTS)
     target_link_libraries(jabba_ffi PRIVATE jabba::jabba jabba_ffi_testing)
     add_test(NAME ffi COMMAND jabba_ffi)
 
+    # Another language's testkit (the same C API) instead of the C++ one: a path to its
+    # shared or static library.
+    set(JABBA_TESTKIT_LIBRARY "" CACHE FILEPATH "Testkit library for conformance_ffi (default: the C++ one)")
     add_executable(jabba_conformance_ffi tests/conformance.cpp)
-    target_link_libraries(jabba_conformance_ffi PRIVATE jabba::jabba jabba_testkit)
+    if(JABBA_TESTKIT_LIBRARY)
+        target_include_directories(jabba_conformance_ffi PRIVATE ${JABBA_FFI_DIR}/testing)
+        target_link_libraries(jabba_conformance_ffi PRIVATE jabba::jabba ${JABBA_TESTKIT_LIBRARY} ${CMAKE_DL_LIBS})
+        if(NOT WIN32 AND NOT APPLE)
+            target_link_libraries(jabba_conformance_ffi PRIVATE m)
+        endif()
+    else()
+        target_link_libraries(jabba_conformance_ffi PRIVATE jabba::jabba jabba_testkit)
+    endif()
     target_compile_definitions(jabba_conformance_ffi PRIVATE JABBA_CONFORMANCE_FOREIGN
         JABBA_SPEC_DIR_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/../spec")
     add_test(NAME conformance_ffi COMMAND jabba_conformance_ffi)

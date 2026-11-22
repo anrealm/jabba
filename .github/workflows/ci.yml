@@ -69,15 +69,68 @@ jobs:
           rustup default ${{ matrix.toolchain }}
       - name: No runtime dependencies
         run: |
-          cargo tree -e normal --prefix none
-          test "$(cargo tree -e normal --prefix none | wc -l)" -eq 1
+          cargo tree -e normal --prefix none --features ffi
+          test "$(cargo tree -e normal --prefix none --features ffi | wc -l)" -eq 1
       - name: Format and lint
         if: matrix.toolchain == 'stable'
         run: |
           cargo fmt --check
           cargo clippy --all-targets -- -D warnings
+          cargo clippy --all-targets --features ffi -- -D warnings
+          cd testkit && cargo fmt --check && cargo clippy -- -D warnings
       - name: Test (5 consecutive runs to catch timing flakes)
         run: for i in 1 2 3 4 5; do cargo test --quiet; done
+      - name: Build the native test libraries (protocol kit, C++ testkit, Rust testkit)
+        run: |
+          cmake -S ../cpp -B ../cpp/build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build ../cpp/build -j 4 --target jabba_ffi_testing_shared jabba_testkit
+          cargo build --manifest-path testkit/Cargo.toml
+      - name: Foreign nodes — C, C++ and Rust nodes in Rust graphs (5 runs)
+        env:
+          JABBA_FFI_TESTING_LIB: ${{ github.workspace }}/cpp/build/libjabba_ffi_testing.${{ runner.os == 'macOS' && 'dylib' || 'so' }}
+          CPP_TESTKIT: ${{ github.workspace }}/cpp/build/libjabba_testkit.${{ runner.os == 'macOS' && 'dylib' || 'so' }}
+          RUST_TESTKIT: ${{ github.workspace }}/rust/testkit/target/debug/libjabba_testkit.${{ runner.os == 'macOS' && 'dylib' || 'so' }}
+        run: |
+          for i in 1 2 3 4 5; do
+            cargo test --quiet --features ffi
+            JABBA_FOREIGN=testkit JABBA_TESTKIT_LIB="$CPP_TESTKIT" cargo test --quiet --features ffi --test conformance
+            JABBA_FOREIGN=testkit JABBA_TESTKIT_LIB="$RUST_TESTKIT" cargo test --quiet --features ffi --test conformance
+          done
+
+  interop:
+    # Rust nodes in graphs of the other languages: the Rust testkit under the Python and
+    # C++ conformance drivers (shared and statically linked).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build the Rust testkit
+        working-directory: rust/testkit
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable build --release
+      - name: Rust nodes in Python graphs (5 runs)
+        working-directory: python
+        env:
+          JABBA_FOREIGN: testkit
+          JABBA_TESTKIT_LIB: ${{ github.workspace }}/rust/testkit/target/release/libjabba_testkit.so
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . --group dev
+          for i in 1 2 3 4 5; do python -m pytest -q tests/test_conformance.py; done
+      - name: Rust nodes in C++ graphs (shared and static, 5 runs each)
+        working-directory: cpp
+        env:
+          JABBA_FOREIGN: testkit
+        run: |
+          for kind in so a; do
+            cmake -S . -B build-$kind -DCMAKE_BUILD_TYPE=Debug \
+              -DJABBA_TESTKIT_LIBRARY=${{ github.workspace }}/rust/testkit/target/release/libjabba_testkit.$kind
+            cmake --build build-$kind -j 4 --target jabba_conformance_ffi
+            for i in 1 2 3 4 5; do ./build-$kind/jabba_conformance_ffi; done
+          done
 
   cpp:
     runs-on: ${{ matrix.os }}

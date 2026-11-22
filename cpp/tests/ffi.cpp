@@ -170,7 +170,11 @@ TEST(abi_and_kind_mismatches_are_compile_errors) {
               auto req = g.request();
               (void)ffi::foreign<Json>("n", jabba::deps(req), ffi::Foreign::from_factory(&jt_node_f64_scale));
           }) == jabba::CompileErrorKind::type_mismatch);  // it returns f64s, not json
-    settle_and_check_counters();
+    settle_and_check_counters(false);
+    jt_counters c{};
+    jt_counters_get(&c);
+    CHECK(c.instances_made == 3);
+    CHECK(c.instances_released == 2);  // the one with another ABI is never called into, not even released
 }
 
 TEST(arrays_cross_without_copies_and_are_released_once) {

@@ -35,6 +35,40 @@ Its declared kinds are checked against the C++ types right there (`CompileError`
 
 Foreign calls continue on `jabba::ffi::Host`, a small process-wide pool that outlives every run — a foreign node may finish after the run that started it.
 
+## Rust
+
+Behind the `ffi` feature: `jabba = { version = "...", features = ["ffi"] }`, then `use jabba::ffi;`. No extra dependencies.
+
+**Export a node** — a factory with C linkage returns a new instance per call (build the crate as a `cdylib` or `staticlib` for hosts in other languages):
+
+```rust
+use jabba::ffi::{self, sys::jabba_node};
+
+#[no_mangle]
+pub extern "C" fn score_node() -> *const jabba_node {
+    ffi::export("score", |(features,): (Vec<f64>,), _ctx| async move {
+        Ok(features.iter().sum::<f64>())
+    })
+}
+```
+
+`export` takes an async body: inputs as a tuple, then the `Ctx` (`ctx.set` writes into the host's record, `ctx.cancel_token()` sees the host's cancellation). It starts inside the host's call and runs until it first waits — keep that part short. `export_sync` takes a synchronous body (`|(x,): (i64,), _ctx: &Ctx| Ok(x * 2)`), which never runs inside the host's call: always on the host's executor, or on a small pool of the crate's own. `export_dyn::<V, T, _, _>(name, &["a", "b"], f)` exports a node whose inputs are named (`DynInputs<V>`). Inputs arrive as owned values — arrays are copied, since the body's future outlives the host's loan of them. Cancellation by the host drops the body's future, as cancellation does in a Rust graph. A panic in an exported body fails the node: unwinding cannot cross the ABI.
+
+**Use a foreign node**:
+
+```rust,ignore
+extern "C" {
+    fn score_node() -> *const jabba_node; // linked in, or a symbol looked up at run time
+}
+
+let score = unsafe { ffi::Foreign::from_factory(score_node) }; // or Foreign::adopt(instance)
+let s = g.add(node("score").deps((&features,)).foreign::<f64>(&score));
+```
+
+Its declared kinds are checked against the Rust types; a mismatch is reported by `compile()` (`TypeMismatch`, `AbiMismatch`). Dropping the node's future — a timeout, a deadline, a failed run — cancels the foreign call; a call the run gave up on still ends properly in the background.
+
+**Types** (`ffi::FfiValue`): `bool`, `i64`, `f64`, `String`, `Vec<u8>` (bytes), `jabba::Json`, `Vec<f64|f32|i64>`, `ffi::Array<f64|f32|i64>` (zero-copy: keeps the foreign memory until it is gone; derefs to a slice), `()` (null), `Option<T>` (nullable).
+
 ## Python
 
 `from jabba import ffi` — pure Python (`ctypes`); the package gets no compiled code.

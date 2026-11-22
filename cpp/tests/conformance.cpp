@@ -233,7 +233,15 @@ struct Testkit {
     ~Testkit() { jabba_testkit_session_free(session); }
     std::vector<std::string> events() {
         std::string buf(jabba_testkit_events(session, nullptr, 0), '\0');
-        jabba_testkit_events(session, buf.data(), buf.size());
+        // a node finishing late may add an event between the two calls
+        while (true) {
+            auto full = jabba_testkit_events(session, buf.data(), buf.size());
+            if (full <= buf.size()) {
+                buf.resize(full);
+                break;
+            }
+            buf.assign(full, '\0');
+        }
         auto parsed = jabba::parse_json(buf);
         return strings(&parsed);
     }

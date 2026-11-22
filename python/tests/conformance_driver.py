@@ -135,9 +135,12 @@ class Testkit:
 
     def events(self, session: int) -> list[str]:
         size = self.lib.jabba_testkit_events(session, None, 0)
-        buf = ctypes.create_string_buffer(size)
-        self.lib.jabba_testkit_events(session, buf, size)
-        return json.loads(buf.raw[:size])
+        while True:  # a node finishing late may add an event between the two calls
+            buf = ctypes.create_string_buffer(size)
+            full = self.lib.jabba_testkit_events(session, buf, size)
+            if full <= size:
+                return json.loads(buf.raw[:full])
+            size = full
 
 
 _testkit = Testkit(os.environ["JABBA_TESTKIT_LIB"]) if FOREIGN else None
