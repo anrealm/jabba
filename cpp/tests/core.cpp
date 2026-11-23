@@ -330,7 +330,7 @@ TEST(the_result_does_not_wait_for_cancelled_nodes_cleanup) {
     jabba::GraphBuilder<int> g("g");
     g.add(jabba::node("slow_cleanup", [](jabba::Ctx& ctx) -> jabba::task<int> {
         co_await ctx.stopped();
-        std::this_thread::sleep_for(300ms);  // cleanup that ignores the grace period
+        std::this_thread::sleep_for(1s);  // cleanup that ignores the grace period
         co_return 0;
     }));
     auto graph = g.compile();
@@ -340,8 +340,12 @@ TEST(the_result_does_not_wait_for_cancelled_nodes_cleanup) {
         CHECK(r.status == RunStatus::timeout);
         took.set_value(std::chrono::steady_clock::now() - started);
     });
-    CHECK(took.get_future().get() < 200ms);
-    std::this_thread::sleep_for(350ms);  // let the cleanup finish before the pool goes away
+    // ~60 ms (deadline + grace); waiting for the cleanup would take over a second. The margin
+    // is for loaded CI machines.
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(took.get_future().get()).count();
+    std::printf("  result after %lld ms\n", static_cast<long long>(ms));
+    CHECK(ms < 500);
+    std::this_thread::sleep_for(1050ms);  // let the cleanup finish before the pool goes away
 }
 
 int main() { return check::run_all(); }
