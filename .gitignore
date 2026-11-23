@@ -165,5 +165,6 @@ rust/Cargo.lock
 
 # Core dumps from crashed test binaries (not `core`: python/jabba/core is a package)
 /cpp/core
+/rust/core
 /cpp/build/core
 core.[0-9]*

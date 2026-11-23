@@ -11,10 +11,16 @@ pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Where an exported node's `ctx.set` goes: its host's record.
+pub(crate) type Forward = Box<dyn Fn(&str, &Json) + Send + Sync>;
+
 /// State shared by every node of one run.
 pub(crate) struct RunShared {
     pub(crate) request_id: String,
     fields: Mutex<Fields>,
+    /// When set, fields go here instead (a node exported to another language writes into
+    /// its host's record).
+    forward: Option<Forward>,
 }
 
 #[derive(Default)]
@@ -28,6 +34,16 @@ impl RunShared {
         RunShared {
             request_id,
             fields: Mutex::new(Fields::default()),
+            forward: None,
+        }
+    }
+
+    #[cfg_attr(not(feature = "ffi"), allow(dead_code))]
+    pub(crate) fn forwarding(request_id: String, forward: Forward) -> Self {
+        RunShared {
+            request_id,
+            fields: Mutex::new(Fields::default()),
+            forward: Some(forward),
         }
     }
 
@@ -58,6 +74,10 @@ impl Ctx {
     /// Write a field into the run's record. Last write wins; writes after the
     /// run has returned are dropped.
     pub fn set(&self, key: impl Into<String>, value: impl Into<Json>) {
+        if let Some(forward) = &self.shared.forward {
+            forward(&key.into(), &value.into());
+            return;
+        }
         let mut fields = lock(&self.shared.fields);
         if fields.frozen {
             return;

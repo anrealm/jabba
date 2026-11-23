@@ -43,6 +43,8 @@
 
 mod ctx;
 mod error;
+#[cfg(feature = "ffi")]
+pub mod ffi;
 mod graph;
 mod json;
 mod node;

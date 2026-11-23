@@ -10,8 +10,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use jabba::{
-    block_on, node, CompileError, Ctx, DynInputs, Graph, GraphBuilder, Json, NodeError, RunError,
-    RunOptions,
+    block_on, node, CompileError, Ctx, DynInputs, Graph, GraphBuilder, Json, NodeDef, NodeError,
+    RunError, RunOptions,
 };
 use serde_json::Value as J;
 
@@ -235,45 +235,80 @@ struct Outcome {
     duration_ms: f64,
 }
 
+/// A value type the driver can run cases with: serde_json natively, jabba's Json over the ABI.
+trait CaseValue: Clone + Send + Sync + 'static {
+    fn from_case(v: &J) -> Self;
+    fn to_case(&self) -> J;
+}
+
+impl CaseValue for J {
+    fn from_case(v: &J) -> Self {
+        v.clone()
+    }
+    fn to_case(&self) -> J {
+        self.clone()
+    }
+}
+
+impl CaseValue for Json {
+    fn from_case(v: &J) -> Self {
+        to_jabba(v)
+    }
+    fn to_case(&self) -> J {
+        serde_json::from_str(&self.to_string()).expect("valid JSON")
+    }
+}
+
+fn names(n: &J, key: &str) -> Vec<String> {
+    n.get(key).and_then(J::as_array).map_or_else(Vec::new, |a| {
+        a.iter().map(|v| v.as_str().unwrap().to_owned()).collect()
+    })
+}
+
+/// Name, behavior and data dependencies (with the request when the behavior echoes it).
+fn node_parts(n: &J) -> (String, J, Vec<String>) {
+    let name = n["name"].as_str().unwrap().to_owned();
+    let raw = n
+        .get("behavior")
+        .cloned()
+        .unwrap_or(J::Object(Default::default()));
+    let mut deps = names(n, "deps");
+    if raw
+        .get("echo_request")
+        .and_then(J::as_bool)
+        .unwrap_or(false)
+    {
+        deps.push(jabba::REQUEST.to_owned());
+    }
+    (name, raw, deps)
+}
+
+fn policy<V: CaseValue>(mut def: NodeDef<V>, n: &J) -> NodeDef<V> {
+    def = def.after(names(n, "after"));
+    if n.get("optional").and_then(J::as_bool).unwrap_or(false) {
+        def = def.optional();
+    }
+    if let Some(d) = n.get("default") {
+        def = def.default(V::from_case(d));
+    }
+    if let Some(ms) = n.get("timeout_ms").and_then(J::as_f64) {
+        def = def.timeout(Duration::from_secs_f64(ms / 1000.0));
+    }
+    def
+}
+
 fn add_nodes(g: &mut GraphBuilder<J>, case: &J, trace: &Arc<Trace>) {
     for n in case["graph"]["nodes"].as_array().unwrap() {
-        let name = n["name"].as_str().unwrap().to_owned();
-        let raw = n
-            .get("behavior")
-            .cloned()
-            .unwrap_or(J::Object(Default::default()));
-        let names = |key: &str| -> Vec<String> {
-            n.get(key).and_then(J::as_array).map_or_else(Vec::new, |a| {
-                a.iter().map(|v| v.as_str().unwrap().to_owned()).collect()
-            })
-        };
-        let mut deps = names("deps");
-        if raw
-            .get("echo_request")
-            .and_then(J::as_bool)
-            .unwrap_or(false)
-        {
-            deps.push(jabba::REQUEST.to_owned());
-        }
+        let (name, raw, deps) = node_parts(n);
         let behavior = Behavior {
             name: name.clone(),
             raw,
         };
         let trace = trace.clone();
-        let mut def = node(name)
+        let def = node(name)
             .deps_dyn::<J>(deps)
-            .run(move |inputs, ctx| run_behavior(behavior.clone(), trace.clone(), inputs, ctx))
-            .after(names("after"));
-        if n.get("optional").and_then(J::as_bool).unwrap_or(false) {
-            def = def.optional();
-        }
-        if let Some(d) = n.get("default") {
-            def = def.default(d.clone());
-        }
-        if let Some(ms) = n.get("timeout_ms").and_then(J::as_f64) {
-            def = def.timeout(Duration::from_secs_f64(ms / 1000.0));
-        }
-        g.add(def);
+            .run(move |inputs, ctx| run_behavior(behavior.clone(), trace.clone(), inputs, ctx));
+        g.add(policy(def, n));
     }
 }
 
@@ -283,21 +318,35 @@ fn ms(v: Option<&J>) -> Option<Duration> {
 }
 
 fn run_case(case: &J) -> Outcome {
+    #[cfg(feature = "ffi")]
+    if let Some(testkit) = foreign::testkit() {
+        let session = testkit.session();
+        let mut outcome = run_graph::<Json>(case, |g| foreign::add_nodes(g, case, &session));
+        outcome.events = session.events();
+        return outcome;
+    }
     let trace = Arc::new(Trace::default());
+    let mut outcome = run_graph::<J>(case, |g| add_nodes(g, case, &trace));
+    outcome.events = trace.events.lock().unwrap().clone();
+    outcome
+}
+
+/// Build, run and record a case; the caller fills in the events.
+fn run_graph<V: CaseValue>(case: &J, add: impl FnOnce(&mut GraphBuilder<V>)) -> Outcome {
     let mut options = RunOptions::default();
     if let Some(deadline) = ms(case.get("deadline_ms")) {
         options = options.deadline(deadline);
     }
-    let request = case.get("request").cloned().unwrap_or(J::Null);
+    let request = V::from_case(case.get("request").unwrap_or(&J::Null));
     let cancel_after = ms(case.get("cancel_after_ms"));
 
-    let mut g = Graph::builder::<J>(case["name"].as_str().unwrap());
-    add_nodes(&mut g, case, &trace);
+    let mut g = Graph::builder::<V>(case["name"].as_str().unwrap());
+    add(&mut g);
     let started = Instant::now();
     let result = match case["graph"].get("output").and_then(J::as_str) {
-        Some(out) => match g.compile_with_output_named::<J>(out) {
+        Some(out) => match g.compile_with_output_named::<V>(out) {
             Ok(graph) => run(graph.run_with(request, options), cancel_after)
-                .map(|r| r.map(|ok| (ok.output.map(|o| (*o).clone()), ok.stat))),
+                .map(|r| r.map(|ok| (ok.output.map(|o| o.to_case()), ok.stat))),
             Err(e) => return compile_outcome(e),
         },
         None => match g.compile() {
@@ -338,8 +387,125 @@ fn run_case(case: &J) -> Outcome {
     outcome.record = stat.map(|s| {
         serde_json::from_str(&s.to_record().to_string()).expect("the record is valid JSON")
     });
-    outcome.events = trace.events.lock().unwrap().clone();
     outcome
+}
+
+/// JABBA_FOREIGN=testkit: every node is foreign, a testkit node (ffi/testing/jabba_testkit.h)
+/// behind the ABI, loaded from JABBA_TESTKIT_LIB — any language's.
+#[cfg(feature = "ffi")]
+mod foreign {
+    use std::ffi::{c_char, c_int, c_void, CString};
+    use std::sync::OnceLock;
+
+    use jabba::ffi::sys::jabba_node;
+    use jabba::ffi::Foreign;
+    use jabba::{node, GraphBuilder, Json};
+    use serde_json::Value as J;
+
+    #[cfg_attr(target_os = "linux", link(name = "dl"))]
+    extern "C" {
+        fn dlopen(path: *const c_char, flags: c_int) -> *mut c_void;
+        fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
+    }
+
+    type SessionNew = unsafe extern "C" fn() -> *mut c_void;
+    type SessionFree = unsafe extern "C" fn(*mut c_void);
+    type NodeFn = unsafe extern "C" fn(*mut c_void, *const c_char, usize) -> *const jabba_node;
+    type EventsFn = unsafe extern "C" fn(*mut c_void, *mut c_char, usize) -> usize;
+
+    pub struct Testkit {
+        session_new: SessionNew,
+        session_free: SessionFree,
+        node: NodeFn,
+        events: EventsFn,
+    }
+
+    pub fn testkit() -> Option<&'static Testkit> {
+        if std::env::var("JABBA_FOREIGN").ok()? != "testkit" {
+            return None;
+        }
+        static TESTKIT: OnceLock<Testkit> = OnceLock::new();
+        Some(TESTKIT.get_or_init(|| {
+            let path = std::env::var("JABBA_TESTKIT_LIB").expect("JABBA_TESTKIT_LIB is set");
+            let cpath = CString::new(path.clone()).unwrap();
+            // Never closed: nodes and their threads may outlive any one case.
+            let lib = unsafe {
+                dlopen(cpath.as_ptr(), 2 /* RTLD_NOW */)
+            };
+            assert!(!lib.is_null(), "cannot load {path}");
+            let sym = |name: &str| {
+                let cname = CString::new(name).unwrap();
+                let p = unsafe { dlsym(lib, cname.as_ptr()) };
+                assert!(!p.is_null(), "{path} has no {name}");
+                p
+            };
+            unsafe {
+                Testkit {
+                    session_new: std::mem::transmute::<*mut c_void, SessionNew>(sym(
+                        "jabba_testkit_session_new",
+                    )),
+                    session_free: std::mem::transmute::<*mut c_void, SessionFree>(sym(
+                        "jabba_testkit_session_free",
+                    )),
+                    node: std::mem::transmute::<*mut c_void, NodeFn>(sym("jabba_testkit_node")),
+                    events: std::mem::transmute::<*mut c_void, EventsFn>(sym(
+                        "jabba_testkit_events",
+                    )),
+                }
+            }
+        }))
+    }
+
+    pub struct Session {
+        kit: &'static Testkit,
+        raw: *mut c_void,
+    }
+
+    impl Testkit {
+        pub fn session(&'static self) -> Session {
+            Session {
+                kit: self,
+                raw: unsafe { (self.session_new)() },
+            }
+        }
+    }
+
+    impl Session {
+        pub fn events(&self) -> Vec<String> {
+            let mut buf =
+                vec![0u8; unsafe { (self.kit.events)(self.raw, std::ptr::null_mut(), 0) }];
+            // a node finishing late may add an event between the two calls
+            loop {
+                let full =
+                    unsafe { (self.kit.events)(self.raw, buf.as_mut_ptr().cast(), buf.len()) };
+                if full <= buf.len() {
+                    buf.truncate(full);
+                    break;
+                }
+                buf = vec![0u8; full];
+            }
+            serde_json::from_slice(&buf).expect("events are a JSON array of strings")
+        }
+    }
+
+    impl Drop for Session {
+        fn drop(&mut self) {
+            unsafe { (self.kit.session_free)(self.raw) };
+        }
+    }
+
+    pub fn add_nodes(g: &mut GraphBuilder<Json>, case: &J, session: &Session) {
+        for n in case["graph"]["nodes"].as_array().unwrap() {
+            let (name, raw, deps) = super::node_parts(n);
+            let spec = serde_json::json!({"name": name, "deps": deps, "behavior": raw}).to_string();
+            let instance =
+                unsafe { (session.kit.node)(session.raw, spec.as_ptr().cast(), spec.len()) };
+            assert!(!instance.is_null(), "the testkit rejected {spec}");
+            let f = unsafe { Foreign::adopt(instance) };
+            let def = node(name).deps_dyn::<Json>(deps).foreign::<Json>(&f);
+            g.add(super::policy(def, n));
+        }
+    }
 }
 
 fn compile_outcome(e: CompileError) -> Outcome {
@@ -484,6 +650,10 @@ fn conformance() {
                 "{id}\n  passes but is marked pending for {LANGUAGE}"
             )),
         }
+    }
+    #[cfg(feature = "ffi")]
+    if foreign::testkit().is_some() {
+        println!("mode: every node is foreign (testkit over the ABI)");
     }
     assert!(ran > 0, "no cases under {:?}", spec_dir());
     assert!(

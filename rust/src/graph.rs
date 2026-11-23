@@ -89,6 +89,9 @@ impl<R: Send + Sync + 'static> GraphBuilder<R> {
     /// Add a node. Problems (reserved or duplicate names) are reported by `compile`.
     pub fn add<T: Send + Sync + 'static>(&mut self, def: NodeDef<T>) -> NodeRef<T> {
         let name = def.name.clone();
+        if let Some(error) = def.error.clone() {
+            self.fail(error.kind, error.message);
+        }
         if &*name == REQUEST || &*name == CTX {
             self.fail(
                 CompileErrorKind::ReservedName,

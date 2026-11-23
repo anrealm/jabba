@@ -55,6 +55,7 @@ pub enum CompileErrorKind {
     OptionalOutputWithoutDefault,
     Cycle,
     TypeMismatch,
+    AbiMismatch,
 }
 
 impl CompileErrorKind {
@@ -69,6 +70,7 @@ impl CompileErrorKind {
             CompileErrorKind::OptionalOutputWithoutDefault => "optional_output_without_default",
             CompileErrorKind::Cycle => "cycle",
             CompileErrorKind::TypeMismatch => "type_mismatch",
+            CompileErrorKind::AbiMismatch => "abi_mismatch",
         }
     }
 }

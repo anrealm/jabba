@@ -61,12 +61,18 @@ let fetched = g.add(node("fetch").deps((&req,)).run(move |(r,), _ctx| {
 
 What a timeout or cancellation can and cannot stop: [`docs/cancellation.md`](../docs/cancellation.md).
 
+Nodes in other languages (C++, Python, anything that speaks the C ABI), and Rust nodes for graphs in other languages: the `ffi` feature, see [`docs/interop.md`](../docs/interop.md).
+
 ## Development
 
 ```bash
 cd rust
 cargo test        # unit tests, conformance cases from ../spec, doc tests (including this README)
 cargo clippy --all-targets -- -D warnings
+cargo test --features ffi  # + foreign nodes; tests/ffi.rs needs the C protocol kit:
+                           #   JABBA_FFI_TESTING_LIB=path/to/libjabba_ffi_testing.so
 ```
+
+`testkit/` is the Rust implementation of [`ffi/testing/jabba_testkit.h`](../ffi/testing/jabba_testkit.h): every conformance case with Rust nodes behind the ABI, for hosts in any language (`JABBA_FOREIGN=testkit JABBA_TESTKIT_LIB=...`, which `tests/conformance.rs` also understands with `--features ffi`).
 
 MSRV: Rust 1.75. Tests find `spec/` next to `rust/`; set `JABBA_SPEC_DIR` if it lives elsewhere.
